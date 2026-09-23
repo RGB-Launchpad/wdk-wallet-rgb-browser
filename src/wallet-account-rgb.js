@@ -134,6 +134,13 @@ export default class WalletAccountRgb extends IWalletAccount {
     return this._readOnly.getFreeSlots()
   }
 
+  /**
+   * @returns {Promise<{ network: string, online: boolean, onlineError: string | null, persisted: boolean }>} What the wallet knows about its own situation.
+   */
+  async getStatus () {
+    return this._readOnly.getStatus()
+  }
+
   /** @returns {Promise<boolean | null>} Whether a backup is due. */
   async isBackupNeeded () {
     return this._readOnly.isBackupNeeded()
@@ -260,8 +267,8 @@ export default class WalletAccountRgb extends IWalletAccount {
    *
    * @returns {Promise<Object>} What changed.
    */
-  async refresh () {
-    return this._engine.refresh()
+  async refresh (assetId) {
+    return this._engine.refresh(assetId)
   }
 
   /**

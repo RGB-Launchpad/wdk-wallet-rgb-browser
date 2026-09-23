@@ -128,6 +128,23 @@ signature, which is what a verifier needs.
 this module nor the bindings underneath it provide; use a Bitcoin library on the verifying
 side.
 
+## Two things a browser wallet gets wrong against a live chain
+
+Both were found by running this module against a real regtest chain, and both look like the
+chain is broken when they are not.
+
+**The indexer's cache headers decide how current the wallet can be.** blockstream/esplora
+answers with `cache-control: public, max-age=10`, and a browser obeys it. A wallet polling
+faster than that keeps reading the same answer: a transfer stays at `WaitingConfirmations`
+long after its transaction is in a block. This module's own reads pass `cache: 'no-store'`,
+but rgb-lib's requests are its own, so no wallet can be more current than the indexer allows.
+
+**`listTransfers` takes different arguments in different builds.** The published bindings take
+an asset id, and passing none returns the transfers belonging to *no* asset — an empty list on
+a wallet that holds any. Later builds take an AssetFilter, where `any` means everything. This
+module settles which one the injected bindings want on the first call and, for the asset-id
+shape, asks once per asset so that "every transfer" means what it says.
+
 ## One account
 
 rgb-lib holds one wallet per recovery phrase and derives its keychains inside it, so this

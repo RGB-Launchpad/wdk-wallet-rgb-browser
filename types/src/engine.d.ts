@@ -189,9 +189,10 @@ export default class Engine {
      * Picks up consignments and advances the transfer state machine. The cost grows with the
      * transfer history, because every consignment is validated on the device.
      *
+     * @param {string} [assetId] - Restrict to one asset.
      * @returns {Promise<Object>} What changed.
      */
-    refresh(): Promise<any>;
+    refresh(assetId?: string): Promise<any>;
     /**
      * Fails the expired invoices and deletes the ones that never received anything, which
      * releases the allocation slots they were holding.
@@ -266,6 +267,18 @@ export default class Engine {
      * @returns {Array<Object>} The transfers, as rgb-lib returns them.
      */
     private _listTransfers;
+    /**
+     * The asset-id form of `listTransfers`, including the case the argument cannot express.
+     *
+     * Passing no asset id does not mean "every transfer": it returns only the transfers that
+     * belong to no asset, which on a wallet holding assets is an empty list. Asking for
+     * everything therefore means asking once per asset and adding the assetless ones.
+     *
+     * @private
+     * @param {string} [assetId] - The asset to restrict to.
+     * @returns {Array<Object>} The transfers.
+     */
+    private _listTransfersByAsset;
     /**
      * @private
      * @returns {Promise<boolean>} Whether storage is persistent.

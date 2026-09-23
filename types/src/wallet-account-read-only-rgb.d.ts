@@ -91,6 +91,22 @@ export default class WalletAccountReadOnlyRgb {
      */
     getFreeSlots(): Promise<number>;
     /**
+     * What the wallet knows about its own situation: the network it is on, whether the
+     * indexer was reachable when it opened and why not if it was not, and whether the browser
+     * granted persistent storage.
+     *
+     * A wallet opens whether or not the indexer answers, so a consumer that does not check
+     * this will show stale balances as though they were current.
+     *
+     * @returns {Promise<{ network: string, online: boolean, onlineError: string | null, persisted: boolean }>} The status.
+     */
+    getStatus(): Promise<{
+        network: string;
+        online: boolean;
+        onlineError: string | null;
+        persisted: boolean;
+    }>;
+    /**
      * Whether the wallet has changed since its last backup. The recovery phrase alone cannot
      * restore RGB assets: the consignments live only on this device.
      *

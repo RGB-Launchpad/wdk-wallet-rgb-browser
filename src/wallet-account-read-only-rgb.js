@@ -149,6 +149,25 @@ export default class WalletAccountReadOnlyRgb extends IWalletAccountReadOnly {
   }
 
   /**
+   * What the wallet knows about its own situation: the network it is on, whether the
+   * indexer was reachable when it opened and why not if it was not, and whether the browser
+   * granted persistent storage.
+   *
+   * A wallet opens whether or not the indexer answers, so a consumer that does not check
+   * this will show stale balances as though they were current.
+   *
+   * @returns {Promise<{ network: string, online: boolean, onlineError: string | null, persisted: boolean }>} The status.
+   */
+  async getStatus () {
+    return {
+      network: this._engine.network,
+      online: this._engine.online,
+      onlineError: this._engine.onlineError,
+      persisted: this._engine.persisted
+    }
+  }
+
+  /**
    * Whether the wallet has changed since its last backup. The recovery phrase alone cannot
    * restore RGB assets: the consignments live only on this device.
    *

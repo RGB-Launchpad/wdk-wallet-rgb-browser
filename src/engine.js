@@ -32,6 +32,17 @@ import serialQueue from './serial-queue.js'
 const initialising = new WeakMap()
 
 /**
+ * Indexers set cache headers — blockstream/esplora sends `max-age=10` — and a browser obeys
+ * them. A wallet asking "is this transfer confirmed now" that is answered from the cache
+ * reports a stale chain, and polling faster than the cache lifetime never sees the answer
+ * change. These reads always go to the network.
+ *
+ * rgb-lib's own requests are outside this module's reach, so a wallet can never be more
+ * current than the indexer's headers allow.
+ */
+const NO_CACHE = { cache: 'no-store' }
+
+/**
  * The wallet as rgb-lib sees it, plus everything a browser needs around it: one command at
  * a time, the snapshot key the network demands, and the reads that go to the indexer rather
  * than to the engine.
@@ -463,9 +474,10 @@ export default class Engine {
    * Picks up consignments and advances the transfer state machine. The cost grows with the
    * transfer history, because every consignment is validated on the device.
    *
+   * @param {string} [assetId] - Restrict to one asset.
    * @returns {Promise<Object>} What changed.
    */
-  async refresh () {
+  async refresh (assetId) {
     const online = this.needOnline()
 
     return this.run(async () => {
@@ -473,7 +485,7 @@ export default class Engine {
 
       await this.wallet.sync(online)
 
-      const changed = this.plain(await this.wallet.refresh(online, undefined, [], false))
+      const changed = this.plain(await this.wallet.refresh(online, assetId ?? undefined, [], false))
 
       await this.wallet.flush()
 
@@ -676,9 +688,7 @@ export default class Engine {
    * @returns {Array<Object>} The transfers, as rgb-lib returns them.
    */
   _listTransfers (assetId) {
-    if (this._transferArgument === 'assetId') {
-      return this.wallet.listTransfers(assetId ?? undefined)
-    }
+    if (this._transferArgument === 'assetId') return this._listTransfersByAsset(assetId)
 
     try {
       const transfers = this.wallet.listTransfers(assetId ? { id: assetId } : 'any')
@@ -691,8 +701,47 @@ export default class Engine {
 
       this._transferArgument = 'assetId'
 
-      return this.wallet.listTransfers(assetId ?? undefined)
+      return this._listTransfersByAsset(assetId)
     }
+  }
+
+  /**
+   * The asset-id form of `listTransfers`, including the case the argument cannot express.
+   *
+   * Passing no asset id does not mean "every transfer": it returns only the transfers that
+   * belong to no asset, which on a wallet holding assets is an empty list. Asking for
+   * everything therefore means asking once per asset and adding the assetless ones.
+   *
+   * @private
+   * @param {string} [assetId] - The asset to restrict to.
+   * @returns {Array<Object>} The transfers.
+   */
+  _listTransfersByAsset (assetId) {
+    if (assetId) return this.wallet.listTransfers(assetId)
+
+    const seen = new Set()
+    const all = []
+
+    const add = (transfers) => {
+      for (const transfer of transfers || []) {
+        const key = `${transfer.batchTransferIdx}/${transfer.idx ?? ''}/${transfer.txid ?? ''}`
+
+        if (seen.has(key)) continue
+
+        seen.add(key)
+        all.push(transfer)
+      }
+    }
+
+    const list = this.wallet.listAssets([])
+
+    for (const asset of [...(list.nia || []), ...(list.ifa || [])]) {
+      add(this.wallet.listTransfers(asset.assetId))
+    }
+
+    add(this.wallet.listTransfers(undefined))
+
+    return all.sort((a, b) => Number(a.batchTransferIdx) - Number(b.batchTransferIdx))
   }
 
   /**
@@ -712,7 +761,7 @@ export default class Engine {
    * @returns {Promise<Array<[number, number]>>} The mempool histogram.
    */
   async _mempoolHistogram () {
-    const response = await fetch(`${this._config.esploraUrl.replace(/\/+$/, '')}/mempool`)
+    const response = await fetch(`${this._config.esploraUrl.replace(/\/+$/, '')}/mempool`, NO_CACHE)
 
     if (!response.ok) throw new Error(`mempool ${response.status}`)
 
@@ -736,7 +785,7 @@ export default class Engine {
     if (!pending.length) return transfers
 
     const base = this._config.esploraUrl.replace(/\/+$/, '')
-    const get = (path) => fetch(`${base}${path}`, { signal: AbortSignal.timeout(8000) })
+    const get = (path) => fetch(`${base}${path}`, { ...NO_CACHE, signal: AbortSignal.timeout(8000) })
 
     let tip
 

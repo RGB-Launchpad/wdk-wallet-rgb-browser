@@ -38,6 +38,7 @@ export async function runRgbExample (config = {}) {
 
   const account = await wdk.getAccount('rgb', 0)
 
+  const status = await account.getStatus()
   const address = await account.getAddress()
   const balance = await account.getBtcBalance()
   const assets = await account.listAssets()
@@ -46,6 +47,16 @@ export async function runRgbExample (config = {}) {
 
   // Signing needs the wallet, not the chain, so it works with no indexer.
   const signed = await account.signMessage('Hello World')
+
+  // Only meaningful against a reachable indexer; it reads the mempool and asks the indexer
+  // for its own estimate.
+  let feeRate = null
+
+  if (status.online) {
+    const rates = await wdk.getFeeRates('rgb')
+
+    feeRate = { normal: rates.normal.toString(), fast: rates.fast.toString() }
+  }
 
   const failures = {}
 
@@ -67,6 +78,8 @@ export async function runRgbExample (config = {}) {
   wdk.dispose()
 
   return {
+    status,
+    feeRate,
     address,
     addressIsTaproot: address.startsWith('tb1p'),
     vanillaSettled: String(balance.vanilla.settled),
@@ -83,9 +96,13 @@ export async function runRgbExample (config = {}) {
 
 // One run per page load, whoever is watching. A second run would open a second wallet over
 // the same snapshot, which is a race worth not writing into an example.
-const esploraUrl = new URLSearchParams(location.search).get('esplora')
+const params = new URLSearchParams(location.search)
 
-globalThis.rgbExample = runRgbExample(esploraUrl ? { esploraUrl } : {})
+globalThis.rgbExample = runRgbExample({
+  ...(params.get('esplora') ? { esploraUrl: params.get('esplora') } : {}),
+  ...(params.get('proxy') ? { proxyUrl: params.get('proxy') } : {}),
+  ...(params.get('network') ? { network: params.get('network') } : {})
+})
 
 globalThis.rgbExample
   .then((result) => {

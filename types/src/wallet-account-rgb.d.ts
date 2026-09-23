@@ -70,6 +70,15 @@ export default class WalletAccountRgb {
     }>;
     /** @returns {Promise<number>} Free allocation slots. */
     getFreeSlots(): Promise<number>;
+    /**
+     * @returns {Promise<{ network: string, online: boolean, onlineError: string | null, persisted: boolean }>} What the wallet knows about its own situation.
+     */
+    getStatus(): Promise<{
+        network: string;
+        online: boolean;
+        onlineError: string | null;
+        persisted: boolean;
+    }>;
     /** @returns {Promise<boolean | null>} Whether a backup is due. */
     isBackupNeeded(): Promise<boolean | null>;
     /**
@@ -180,7 +189,7 @@ export default class WalletAccountRgb {
      *
      * @returns {Promise<Object>} What changed.
      */
-    refresh(): Promise<any>;
+    refresh(assetId: any): Promise<any>;
     /**
      * Fails the expired invoices and deletes the ones that never received anything, which
      * releases the allocation slots they were holding.
