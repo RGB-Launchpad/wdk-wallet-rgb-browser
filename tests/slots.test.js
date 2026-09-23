@@ -5,6 +5,7 @@ import { describe, expect, test } from '@jest/globals'
 import {
   SLOTS,
   payableRate,
+  explainReceiveError,
   explainSendError,
   freeSlots,
   slotBlocker,
@@ -74,6 +75,19 @@ describe('freeSlots', () => {
       unspent({ rgbAllocations: [{}, {}] }),
       unspent({ utxo: { colorable: false } })
     ])).toBe(SLOTS.maxAllocationsPerUtxo + (SLOTS.maxAllocationsPerUtxo - 2))
+  })
+})
+
+describe('explainReceiveError', () => {
+  test('says the slots are there but not yet usable', () => {
+    const message = explainReceiveError('Insufficient allocations')
+
+    expect(message).toMatch(/confirmation/)
+    expect(message).toMatch(/needs no slot/)
+  })
+
+  test('leaves any other message alone', () => {
+    expect(explainReceiveError('Proxy unreachable')).toBe('Proxy unreachable')
   })
 })
 
