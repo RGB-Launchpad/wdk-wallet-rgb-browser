@@ -42,6 +42,13 @@ const initialising = new WeakMap()
 const NO_CACHE = { cache: 'no-store' }
 
 /**
+ * How many coloured addresses to rotate through looking for a recipient id the proxy does not
+ * already hold. Each attempt is one round trip, so this is also a bound on how long the engine
+ * is held for one invoice.
+ */
+const WITNESS_ADDRESS_ATTEMPTS = 10
+
+/**
  * The wallet as rgb-lib sees it, plus everything a browser needs around it: one command at
  * a time, the snapshot key the network demands, and the reads that go to the indexer rather
  * than to the engine.
@@ -399,18 +406,72 @@ export default class Engine {
     }
 
     return this.run(async () => {
-      const invoice = this.wallet.witnessReceive(
-        assetId || undefined,
-        'Any',
-        (minutes || this._config.invoiceMinutes) * 60,
-        [this._config.proxyUrl],
-        this._config.minConfirmations
-      )
+      // A wallet pins its addresses so its identity stays put, which means a witness invoice
+      // would name the same output script — and so the same recipient id — every time. A
+      // proxy holds one consignment per recipient id and refuses the second, so every
+      // invoice after the first would be unusable.
+      //
+      // Rotating once is not enough either: a wallet restored from its recovery phrase
+      // starts the index again, and an invoice that expired unused leaves no trace on the
+      // chain, only on the proxy. So the proxy is the one asked. Only the coloured keychain
+      // rotates; the identity address is on the vanilla one and does not move.
+      for (let attempt = 0; attempt < WITNESS_ADDRESS_ATTEMPTS; attempt++) {
+        this.wallet.rotateAddress(0)
 
-      await this.wallet.flush()
+        const invoice = this.plain(this.wallet.witnessReceive(
+          assetId || undefined,
+          'Any',
+          (minutes || this._config.invoiceMinutes) * 60,
+          [this._config.proxyUrl],
+          this._config.minConfirmations
+        ))
 
-      return this.plain(invoice)
+        if (!await this._proxyHolds(invoice.recipientId ?? invoice.recipient_id)) {
+          await this.wallet.flush()
+
+          return invoice
+        }
+      }
+
+      throw new Error('Could not find an unused receiving address. Try again later.')
     })
+  }
+
+  /**
+   * Whether the proxy already holds a consignment for this recipient id, which makes the id
+   * unusable: it keeps one per id and refuses to replace it.
+   *
+   * @private
+   * @param {string} recipientId - The recipient id.
+   * @returns {Promise<boolean>} True when the id is taken.
+   */
+  async _proxyHolds (recipientId) {
+    const url = String(this._config.proxyUrl)
+      .replace(/^rpcs:\/\//, 'https://')
+      .replace(/^rpc:\/\//, 'http://')
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'consignment.get',
+        params: { recipient_id: recipientId }
+      }),
+      signal: AbortSignal.timeout(8000)
+    })
+
+    if (!response.ok) throw new Error(`The RGB proxy answered ${response.status}.`)
+
+    const body = await response.json()
+
+    if (body.result?.consignment) return true
+
+    // -400 is "consignment file not found", which is what a free id looks like.
+    if (body.error?.code === -400) return false
+
+    throw new Error(`The RGB proxy said: ${body.error?.message || 'something unexpected'}.`)
   }
 
   /**
