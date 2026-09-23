@@ -102,6 +102,15 @@ export default class Engine {
     return !!this._online
   }
 
+  /**
+   * The indexer handle as rgb-lib wants it, or null when the wallet opened offline.
+   *
+   * @returns {Object | null} The handle.
+   */
+  get onlineHandle () {
+    return this._online
+  }
+
   /** @returns {string | null} Why going online failed, when it did. */
   get onlineError () {
     return this._onlineError
@@ -467,6 +476,23 @@ export default class Engine {
       const signed = this.wallet.signPsbt(psbt)
 
       return { address, signature: signatureFromWitness(extractWitness(signed)) }
+    })
+  }
+
+  /**
+   * Brings the wallet's view of the chain up to date, without touching RGB state.
+   *
+   * This is the cheap half of {@link refresh}: balances and UTXOs become current, but nothing
+   * fetches or validates a consignment. Reading a balance without it shows the last figures
+   * the wallet happened to see.
+   *
+   * @returns {Promise<void>} When the wallet is in step with the chain.
+   */
+  async sync () {
+    const online = this.needOnline()
+
+    return this.run(async () => {
+      await this.wallet.sync(online)
     })
   }
 

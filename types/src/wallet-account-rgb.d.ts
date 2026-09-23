@@ -184,6 +184,13 @@ export default class WalletAccountRgb {
         slots: number;
     }>;
     /**
+     * Brings the wallet's view of the chain up to date without touching RGB state. Cheap, and
+     * what a balance reads after if it is to be current.
+     *
+     * @returns {Promise<void>} When the wallet is in step with the chain.
+     */
+    sync(): Promise<void>;
+    /**
      * Picks up consignments and advances the transfers waiting on them. This is the step that
      * turns a transfer someone sent into an asset this wallet holds.
      *
@@ -213,6 +220,32 @@ export default class WalletAccountRgb {
      * @returns {Promise<void>} When the backup is restored.
      */
     restoreBackup(bytes: Uint8Array, password: string): Promise<void>;
+    /**
+     * Runs a task against the rgb-lib wallet directly, in the same queue everything else uses.
+     *
+     * This is the escape hatch for capabilities this module does not wrap: a consumer that
+     * ships its own build of the bindings, with methods upstream does not have, reaches them
+     * here. The queue is the part that matters — every binding takes a mutable borrow for the
+     * whole call, so a task that runs outside it can panic the engine mid-sync and leave it
+     * unusable.
+     *
+     * The `online` handle is null when the wallet opened with no indexer; a task that needs
+     * the chain must say so itself.
+     *
+     * @template T
+     * @param {(wallet: Object, online: Object | null) => Promise<T> | T} task - The task.
+     * @returns {Promise<T>} What it returned.
+     */
+    runExclusive<T>(task: (wallet: any, online: any | null) => Promise<T> | T): Promise<T>;
+    /**
+     * The rgb-lib wallet this account is built on.
+     *
+     * Prefer {@link runExclusive}: a call made on this object directly does not go through the
+     * queue, and two of those at once panic the engine.
+     *
+     * @returns {Object} The wallet.
+     */
+    getRgbWallet(): any;
     /** @returns {Promise<WalletAccountReadOnlyRgb>} A read-only view of this account. */
     toReadOnlyAccount(): Promise<WalletAccountReadOnlyRgb>;
     /** Closes the wallet and drops the engine's handle on the recovery phrase. */
