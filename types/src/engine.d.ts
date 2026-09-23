@@ -155,6 +155,15 @@ export default class Engine {
         minutes?: number;
     }): Promise<any>;
     /**
+     * Whether the proxy already holds a consignment for this recipient id, which makes the id
+     * unusable: it keeps one per id and refuses to replace it.
+     *
+     * @private
+     * @param {string} recipientId - The recipient id.
+     * @returns {Promise<boolean>} True when the id is taken.
+     */
+    private _proxyHolds;
+    /**
      * Issues a new asset. The whole supply is allocated to this wallet, spread over the
      * amounts given, and each amount takes an allocation slot.
      *
