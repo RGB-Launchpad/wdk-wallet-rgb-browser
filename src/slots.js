@@ -155,6 +155,25 @@ export function freeSlots (unspents, slots = SLOTS) {
 }
 
 /**
+ * Turns rgb-lib's "Insufficient allocations" on a receive into what it means.
+ *
+ * A slot can hold an allocation only once the transaction that made it is in a block, and
+ * the count of free slots cannot see that: an unconfirmed UTXO looks like any other. So the
+ * wallet says it has slots and rgb-lib says it has none, which is the same fact twice.
+ *
+ * @param {unknown} message - The error message from rgb-lib.
+ * @returns {string} The message to show.
+ */
+export function explainReceiveError (message) {
+  const text = String(message ?? '')
+
+  if (!/insufficient allocations/i.test(text)) return text
+
+  return 'No slot is usable yet. A slot can hold an allocation only once the transaction ' +
+    'that created it has a confirmation. Wait for one, or use an invoice that needs no slot.'
+}
+
+/**
  * Turns rgb-lib's "Insufficient allocations" on a send into what it means for this wallet;
  * any other message passes through unchanged.
  *

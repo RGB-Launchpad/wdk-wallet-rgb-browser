@@ -28,6 +28,7 @@ export { MAINNET_FEE, TEST_NETWORK_FEE, bid, clearingRate, feeFor } from './src/
 
 export {
   SLOTS,
+  explainReceiveError,
   explainSendError,
   freeSlots,
   slotBlocker,

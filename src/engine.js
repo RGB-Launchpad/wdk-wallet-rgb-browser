@@ -16,7 +16,7 @@
 
 import { bid, clearingRate } from './fee.js'
 import { buildToSignPsbt, extractWitness, signatureFromWitness } from './bip322.js'
-import { explainSendError, freeSlots, slotBlocker, slotsToCreate } from './slots.js'
+import { explainReceiveError, explainSendError, freeSlots, slotBlocker, slotsToCreate } from './slots.js'
 import serialQueue from './serial-queue.js'
 
 /**
@@ -358,14 +358,20 @@ export default class Engine {
         throw new Error('No free allocation slot. Create slots before receiving.')
       }
 
-      // `undefined` means any asset; the bindings reject null.
-      const invoice = this.wallet.blindReceive(
-        assetId || undefined,
-        'Any',
-        (minutes || this._config.invoiceMinutes) * 60,
-        [this._config.proxyUrl],
-        this._config.minConfirmations
-      )
+      let invoice
+
+      try {
+        // `undefined` means any asset; the bindings reject null.
+        invoice = this.wallet.blindReceive(
+          assetId || undefined,
+          'Any',
+          (minutes || this._config.invoiceMinutes) * 60,
+          [this._config.proxyUrl],
+          this._config.minConfirmations
+        )
+      } catch (error) {
+        throw new Error(explainReceiveError(error?.message || error))
+      }
 
       await this.wallet.flush()
 
