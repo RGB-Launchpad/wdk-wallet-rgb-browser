@@ -49,6 +49,15 @@ const NO_CACHE = { cache: 'no-store' }
 const WITNESS_ADDRESS_ATTEMPTS = 10
 
 /**
+ * Whether a recipient id names an output of the sender's transaction rather than a blinded
+ * UTXO of the recipient's. rgb-lib encodes it in the id: `wvout` against `utxob`.
+ *
+ * @param {string} recipientId - The recipient id from the invoice.
+ * @returns {boolean} True for a witness recipient.
+ */
+const isWitnessRecipient = (recipientId) => /(?:^|:)wvout:/.test(String(recipientId || ''))
+
+/**
  * The wallet as rgb-lib sees it, plus everything a browser needs around it: one command at
  * a time, the snapshot key the network demands, and the reads that go to the indexer rather
  * than to the engine.
@@ -689,10 +698,22 @@ export default class Engine {
     return this.run(async () => {
       await this.wallet.sync(online)
 
+      // A witness recipient has no UTXO yet: the transfer creates the output the asset lands
+      // on, and has to be told how many sats to put on it. A blinded one already owns its
+      // output and carries no witness data at all — passing some is an error, and leaving it
+      // out for a witness recipient is the same error the other way round.
+      //
+      // The sats go as a string and `blinding` has to be present even when empty: rgb-lib
+      // reads these through a deserialiser that takes a string, an unsigned number or null,
+      // and a plain JavaScript integer arrives as a signed one, which it refuses.
+      const witnessData = isWitnessRecipient(data.recipientId)
+        ? { amountSat: String(this._config.witnessSats), blinding: null }
+        : undefined
+
       const recipient = (fungible) => ({
         [assetId || data.assetId]: [{
           recipientId: data.recipientId,
-          witnessData: undefined, // blind mode carries no witness data
+          witnessData,
           assignment: { Fungible: fungible },
           transportEndpoints: endpoints
         }]
