@@ -13,6 +13,7 @@
  * @property {Object} [bindings] - The rgb-lib WebAssembly bindings module. Defaults to `@utexo/rgb-lib-wasm`, imported on demand.
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
+ * @property {number} [witnessSats] - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
  * @property {import('./slots.js').SlotParameters} [slots] - Allocation slot parameters.
  */
@@ -97,6 +98,10 @@ export type RgbWalletConfig = {
      * - How long an invoice stays valid. Defaults to 60.
      */
     invoiceMinutes?: number;
+    /**
+     * - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
+     */
+    witnessSats?: number;
     /**
      * - Fee bidding parameters.
      */
