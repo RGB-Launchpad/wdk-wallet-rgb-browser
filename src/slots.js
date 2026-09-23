@@ -27,6 +27,7 @@
  * @property {number} minSatToPrepare - Absolute floor for creating slots.
  * @property {number} prepareVsize - Rough vsize of a create-slots transaction.
  * @property {number} maxAllocationsPerUtxo - Allocations one colored UTXO can hold.
+ * @property {number} sendVsize - Size of a blinded RGB send, in vB, for working out what a slot can pay.
  */
 
 /** @type {SlotParameters} */
@@ -35,7 +36,23 @@ export const SLOTS = {
   utxoSizeSat: 20000,
   minSatToPrepare: 20000,
   prepareVsize: 350,
-  maxAllocationsPerUtxo: 5
+  maxAllocationsPerUtxo: 5,
+  sendVsize: 154
+}
+
+/**
+ * The highest fee rate a send can actually pay, in sat/vB.
+ *
+ * An RGB send pays its fee from the colored UTXOs alone, so the ceiling is not a matter of
+ * taste: it is what one slot holds, divided by the size of the transaction. Bidding above it
+ * produces a send that rgb-lib rejects for insufficient allocations — with a wallet full of
+ * plain bitcoin, which is what makes the failure confusing.
+ *
+ * @param {SlotParameters} slots - The slot parameters.
+ * @returns {number} The ceiling in sat/vB.
+ */
+export function payableRate (slots = SLOTS) {
+  return Math.max(1, Math.floor(slots.utxoSizeSat / slots.sendVsize))
 }
 
 /**

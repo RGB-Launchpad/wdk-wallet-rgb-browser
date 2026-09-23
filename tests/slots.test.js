@@ -4,6 +4,7 @@ import { describe, expect, test } from '@jest/globals'
 
 import {
   SLOTS,
+  payableRate,
   explainSendError,
   freeSlots,
   slotBlocker,
@@ -73,6 +74,23 @@ describe('freeSlots', () => {
       unspent({ rgbAllocations: [{}, {}] }),
       unspent({ utxo: { colorable: false } })
     ])).toBe(SLOTS.maxAllocationsPerUtxo + (SLOTS.maxAllocationsPerUtxo - 2))
+  })
+})
+
+describe('payableRate', () => {
+  test('is what one slot can pay for a send, not a number chosen on its own', () => {
+    expect(payableRate()).toBe(Math.floor(SLOTS.utxoSizeSat / SLOTS.sendVsize))
+  })
+
+  test('rises with the slot size, because a bigger slot can pay more', () => {
+    const bigger = payableRate({ ...SLOTS, utxoSizeSat: 40000 })
+
+    expect(bigger).toBe(Math.floor(40000 / SLOTS.sendVsize))
+    expect(bigger).toBeGreaterThan(payableRate())
+  })
+
+  test('a send at the ceiling still fits in one slot', () => {
+    expect(payableRate() * SLOTS.sendVsize).toBeLessThanOrEqual(SLOTS.utxoSizeSat)
   })
 })
 
