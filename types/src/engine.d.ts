@@ -36,6 +36,12 @@ export default class Engine {
     get network(): string;
     /** @returns {boolean} Whether the indexer was reachable when the wallet opened. */
     get online(): boolean;
+    /**
+     * The indexer handle as rgb-lib wants it, or null when the wallet opened offline.
+     *
+     * @returns {Object | null} The handle.
+     */
+    get onlineHandle(): any | null;
     /** @returns {string | null} Why going online failed, when it did. */
     get onlineError(): string | null;
     /**
@@ -185,6 +191,16 @@ export default class Engine {
         address: string;
         signature: string;
     }>;
+    /**
+     * Brings the wallet's view of the chain up to date, without touching RGB state.
+     *
+     * This is the cheap half of {@link refresh}: balances and UTXOs become current, but nothing
+     * fetches or validates a consignment. Reading a balance without it shows the last figures
+     * the wallet happened to see.
+     *
+     * @returns {Promise<void>} When the wallet is in step with the chain.
+     */
+    sync(): Promise<void>;
     /**
      * Picks up consignments and advances the transfer state machine. The cost grows with the
      * transfer history, because every consignment is validated on the device.
