@@ -19,7 +19,7 @@ import WalletManager from '@tetherto/wdk-wallet'
 import Engine from './engine.js'
 import WalletAccountRgb from './wallet-account-rgb.js'
 import { feeFor } from './fee.js'
-import { SLOTS } from './slots.js'
+import { SLOTS, payableRate } from './slots.js'
 
 /**
  * Public indexers, so the module works out of the box on the test networks. They are
@@ -81,6 +81,15 @@ export default class WalletManagerRgb extends WalletManager {
     /** @private */
     this._mnemonic = seedPhrase
 
+    const slots = { ...SLOTS, ...(config.slots || {}) }
+    const fee = { ...feeFor(network), ...(config.fee || {}) }
+
+    // The configured cap is an upper bound on what is sensible to pay. What a slot can pay
+    // is a hard limit, and the two are set independently, so the lower of them wins. Without
+    // this a busy network produces a bid the wallet cannot fund, and rgb-lib reports it as
+    // insufficient allocations on a wallet that is plainly holding bitcoin.
+    fee.max = Math.min(fee.max, payableRate(slots))
+
     /** @private */
     this._config = {
       network,
@@ -88,8 +97,8 @@ export default class WalletManagerRgb extends WalletManager {
       proxyUrl: config.proxyUrl || null,
       minConfirmations: config.minConfirmations ?? 1,
       invoiceMinutes: config.invoiceMinutes ?? 60,
-      fee: { ...feeFor(network), ...(config.fee || {}) },
-      slots: { ...SLOTS, ...(config.slots || {}) },
+      fee,
+      slots,
       path: `m/86'/${COIN_TYPE[network] ?? 1}'/0'`
     }
 
