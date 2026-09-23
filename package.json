@@ -1,0 +1,68 @@
+{
+  "name": "@rgb-launchpad/wdk-wallet-rgb",
+  "version": "0.1.0",
+  "description": "WDK wallet module for RGB assets on Bitcoin, running in the browser on rgb-lib's WebAssembly bindings.",
+  "keywords": [
+    "wdk",
+    "rgb",
+    "bitcoin",
+    "wallet",
+    "browser",
+    "wasm"
+  ],
+  "author": "RGB Launchpad",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "index.js",
+  "types": "./types",
+  "scripts": {
+    "lint": "standard",
+    "lint:fix": "standard --fix",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:browser": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.browser.config.js",
+    "build:example": "node examples/browser/build.js",
+    "build:types": "tsc"
+  },
+  "peerDependencies": {
+    "@tetherto/wdk-wallet": "^1.0.0-beta.15",
+    "@utexo/rgb-lib-wasm": "^1.0.0-beta.3"
+  },
+  "devDependencies": {
+    "@tetherto/wdk": "1.0.0-beta.18",
+    "@tetherto/wdk-wallet": "1.0.0-beta.15",
+    "@utexo/rgb-lib-wasm": "1.0.0-beta.3",
+    "buffer": "6.0.3",
+    "cross-env": "7.0.3",
+    "esbuild": "0.28.2",
+    "jest": "30.4.2",
+    "playwright": "1.63.0",
+    "standard": "17.1.2",
+    "typescript": "5.8.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./index.js"
+    },
+    "./package": {
+      "default": "./package.json"
+    }
+  },
+  "standard": {
+    "ignore": [
+      "tests/**/*.js",
+      "examples/browser/dist/**"
+    ],
+    "env": [
+      "browser"
+    ]
+  },
+  "files": [
+    "index.js",
+    "src",
+    "types",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ]
+}

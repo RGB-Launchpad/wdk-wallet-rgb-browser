@@ -1,0 +1,175 @@
+/**
+ * An RGB account, backed by rgb-lib's WebAssembly bindings and the snapshot they keep in
+ * IndexedDB.
+ *
+ * Two things read differently here than on an account-based chain. A recipient is an RGB
+ * invoice rather than an address, because the receiver has to say which UTXO the asset lands
+ * on. And a transfer is not complete when the transaction confirms: the consignment has to
+ * reach the recipient through a proxy and be validated there. `listTransfers` shows that
+ * state; `refresh` advances it.
+ */
+export default class WalletAccountRgb {
+    /**
+     * @param {import('./engine.js').default} engine - The open engine.
+     * @param {number} index - The account index.
+     */
+    constructor(engine: import("./engine.js").default, index: number);
+    /** @private */
+    private _engine;
+    /** @private */
+    private _index;
+    /** @private */
+    private _readOnly;
+    /** @returns {number} The account index. */
+    get index(): number;
+    /** @returns {string} The derivation path. */
+    get path(): string;
+    /**
+     * Not available. The recovery phrase stays inside the WebAssembly engine, which signs
+     * without handing the key back out; there is nothing to return that would not be a copy
+     * of the secret in JavaScript memory.
+     *
+     * @throws {UnsupportedOperationError} Always.
+     */
+    get keyPair(): void;
+    /** @returns {Promise<string>} The wallet's Bitcoin address. */
+    getAddress(): Promise<string>;
+    /** @returns {Promise<bigint>} The spendable Bitcoin balance, in sats. */
+    getBalance(): Promise<bigint>;
+    /** @returns {Promise<Object>} The full Bitcoin balance, vanilla and colored. */
+    getBtcBalance(): Promise<any>;
+    /**
+     * @param {string} tokenAddress - The RGB asset id.
+     * @returns {Promise<bigint>} The settled balance.
+     */
+    getTokenBalance(tokenAddress: string): Promise<bigint>;
+    /**
+     * @param {string} assetId - The RGB asset id.
+     * @returns {Promise<Object>} The balance, settled, future and spendable.
+     */
+    getAssetBalance(assetId: string): Promise<any>;
+    /** @returns {Promise<Array<Object>>} The RGB assets this wallet holds. */
+    listAssets(): Promise<Array<any>>;
+    /**
+     * @param {string} [assetId] - Restrict to one asset.
+     * @returns {Promise<Array<Object>>} The transfers, newest first.
+     */
+    listTransfers(assetId?: string): Promise<Array<any>>;
+    /**
+     * @param {string} hash - The txid.
+     * @returns {Promise<Object | null>} The transfer that transaction produced.
+     */
+    getTransactionReceipt(hash: string): Promise<any | null>;
+    /** @returns {Promise<{ fee: bigint }>} The rate a Bitcoin send would bid, in sat/vB. */
+    quoteSendTransaction(): Promise<{
+        fee: bigint;
+    }>;
+    /** @returns {Promise<{ fee: bigint }>} The rate an asset transfer would bid, in sat/vB. */
+    quoteTransfer(): Promise<{
+        fee: bigint;
+    }>;
+    /** @returns {Promise<number>} Free allocation slots. */
+    getFreeSlots(): Promise<number>;
+    /** @returns {Promise<boolean | null>} Whether a backup is due. */
+    isBackupNeeded(): Promise<boolean | null>;
+    /**
+     * Sends plain Bitcoin. Spends the vanilla keychain only, never a UTXO carrying an asset.
+     *
+     * @param {Object} tx - The transaction.
+     * @param {string} tx.to - The destination address.
+     * @param {number | bigint | string} tx.value - The amount in sats.
+     * @param {number | bigint} [tx.feeRate] - The fee rate in sat/vB; estimated when omitted.
+     * @returns {Promise<{ hash: string, fee: bigint }>} The transaction id and the rate it paid.
+     */
+    sendTransaction(tx: {
+        to: string;
+        value: number | bigint | string;
+        feeRate?: number | bigint;
+    }): Promise<{
+        hash: string;
+        fee: bigint;
+    }>;
+    /**
+     * Transfers an RGB asset.
+     *
+     * `recipient` is an RGB invoice, not an address: the receiver decides which UTXO the asset
+     * lands on, and the invoice is how they say so. It also names where the consignment is to
+     * be delivered, and that endpoint takes precedence over the configured proxy.
+     *
+     * @param {Object} options - The transfer.
+     * @param {string} options.token - The RGB asset id.
+     * @param {string} options.recipient - The recipient's RGB invoice.
+     * @param {number | bigint | string} options.amount - The amount, in the asset's base units.
+     * @param {number | bigint} [options.feeRate] - The fee rate in sat/vB; estimated when omitted.
+     * @returns {Promise<{ hash: string, fee: bigint, transfer: Object }>} The result.
+     */
+    transfer(options: {
+        token: string;
+        recipient: string;
+        amount: number | bigint | string;
+        feeRate?: number | bigint;
+    }): Promise<{
+        hash: string;
+        fee: bigint;
+        transfer: any;
+    }>;
+    /**
+     * Creates an invoice to receive an asset into a blinded UTXO, which tells the sender
+     * nothing about this wallet beyond the identifier itself.
+     *
+     * @param {Object} [options] - The invoice.
+     * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
+     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @returns {Promise<Object>} The invoice, its recipient id and its expiry.
+     */
+    receiveAsset(options?: {
+        assetId?: string;
+        minutes?: number;
+    }): Promise<any>;
+    /**
+     * Creates the empty colored UTXOs that receiving requires. Receiving with no free slot
+     * fails, and slots take a confirmed on-chain transaction to make.
+     *
+     * @param {number | bigint} [feeRate] - The fee rate in sat/vB; estimated when omitted.
+     * @returns {Promise<{ created: number, slots: number }>} What was created.
+     */
+    createUtxos(feeRate?: number | bigint): Promise<{
+        created: number;
+        slots: number;
+    }>;
+    /**
+     * Picks up consignments and advances the transfers waiting on them. This is the step that
+     * turns a transfer someone sent into an asset this wallet holds.
+     *
+     * @returns {Promise<Object>} What changed.
+     */
+    refresh(): Promise<any>;
+    /**
+     * Fails the expired invoices and deletes the ones that never received anything, which
+     * releases the allocation slots they were holding.
+     *
+     * @returns {Promise<Object>} What was released.
+     */
+    cleanup(): Promise<any>;
+    /**
+     * An encrypted backup of the whole wallet, including the consignments. The recovery phrase
+     * alone cannot restore RGB assets.
+     *
+     * @param {string} password - The password to encrypt with.
+     * @returns {Promise<Uint8Array>} The backup.
+     */
+    createBackup(password: string): Promise<Uint8Array>;
+    /**
+     * Restores a backup over this wallet. The recovery phrase must be the same one.
+     *
+     * @param {Uint8Array} bytes - The backup.
+     * @param {string} password - The password it was encrypted with.
+     * @returns {Promise<void>} When the backup is restored.
+     */
+    restoreBackup(bytes: Uint8Array, password: string): Promise<void>;
+    /** @returns {Promise<WalletAccountReadOnlyRgb>} A read-only view of this account. */
+    toReadOnlyAccount(): Promise<WalletAccountReadOnlyRgb>;
+    /** Closes the wallet and drops the engine's handle on the recovery phrase. */
+    dispose(): void;
+}
+import WalletAccountReadOnlyRgb from './wallet-account-read-only-rgb.js';

@@ -1,0 +1,9 @@
+export { default } from "./src/wallet-manager-rgb.js";
+export { default as WalletAccountRgb } from "./src/wallet-account-rgb.js";
+export { default as WalletAccountReadOnlyRgb } from "./src/wallet-account-read-only-rgb.js";
+export type RgbWalletConfig = import("./src/wallet-manager-rgb.js").RgbWalletConfig;
+export type FeeParameters = import("./src/fee.js").FeeParameters;
+export type SlotParameters = import("./src/slots.js").SlotParameters;
+export { MAINNET_FEE, TEST_NETWORK_FEE, bid, clearingRate, feeFor } from "./src/fee.js";
+export { SLOTS, explainSendError, freeSlots, slotBlocker, slotCost, slotsToCreate, usableEmptySlots } from "./src/slots.js";
+export { SNAPSHOT_DB, SNAPSHOT_STORE, dataDirOf, deleteSnapshots, isChainMismatch, snapshotPrefix } from "./src/snapshots.js";

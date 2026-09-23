@@ -1,0 +1,22 @@
+@rgb-launchpad/wdk-wallet-rgb
+Copyright 2026 RGB Launchpad
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+--------------------------------------------------------------------------------
+
+This package binds two projects together and implements neither of them.
+
+  rgb-lib            https://github.com/RGB-Tools/rgb-lib
+                     The RGB protocol implementation. MIT.
+
+  rgb-lib-wasm       https://github.com/UTEXO-Protocol/rgb-lib-wasm
+                     The WebAssembly bindings that make rgb-lib usable in a browser,
+                     maintained by UTEXO and published as @utexo/rgb-lib-wasm. MIT.
+
+  WDK                https://github.com/tetherto/wdk
+                     The wallet framework whose interfaces this module implements,
+                     by Tether. Apache-2.0.
+
+Both rgb-lib and its WebAssembly bindings are declared as dependencies and are neither
+vendored nor modified here. Their licences travel with their own packages.
