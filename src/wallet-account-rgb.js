@@ -169,6 +169,12 @@ export default class WalletAccountRgb extends IWalletAccount {
   /**
    * Transfers an RGB asset.
    *
+   * 🚨 Nothing goes on the chain here. The consignment is posted for the recipient, who
+   * validates it and acknowledges; the transaction is broadcast by a later {@link refresh},
+   * once that acknowledgement has arrived. `hash` names a transaction that is not yet on the
+   * network, and a wallet that sends and never refreshes again has not sent anything. See
+   * {@link pendingHandovers}.
+   *
    * `recipient` is an RGB invoice, not an address: the receiver decides which UTXO the asset
    * lands on, and the invoice is how they say so. It also names where the consignment is to
    * be delivered, and that endpoint takes precedence over the configured proxy.
@@ -190,6 +196,19 @@ export default class WalletAccountRgb extends IWalletAccount {
     })
 
     return { hash: transfer.txid, fee: feeRate, transfer }
+  }
+
+  /**
+   * The transfers this wallet has sent that are still waiting on their recipient.
+   *
+   * See {@link transfer}: a send is not on the chain until the recipient has acknowledged
+   * the consignment and this wallet has refreshed. A consumer that wants sends to complete
+   * without the user thinking about it refreshes while this is not empty.
+   *
+   * @returns {Promise<Array<Object>>} The outgoing transfers still waiting.
+   */
+  async pendingHandovers () {
+    return this._engine.pendingHandovers()
   }
 
   /**

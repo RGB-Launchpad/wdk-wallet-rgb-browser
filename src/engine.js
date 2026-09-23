@@ -659,6 +659,13 @@ export default class Engine {
   /**
    * Sends an asset to an invoice.
    *
+   * 🚨 This does not put anything on the chain. RGB posts the consignment to the proxy and
+   * waits: the recipient fetches it, validates it and acknowledges, and only then does the
+   * sender broadcast. Broadcasting earlier would risk an asset the recipient could not
+   * validate. The returned `hash` is therefore the id of a transaction that is not yet on
+   * the network, and {@link refresh} is what eventually puts it there. See
+   * {@link pendingHandovers}.
+   *
    * The invoice's own transport endpoints take precedence over the configured one: the
    * consignment has to land where the recipient looks for it.
    *
@@ -746,6 +753,25 @@ export default class Engine {
 
       return result
     })
+  }
+
+  /**
+   * The transfers this wallet has sent that are still waiting on their recipient.
+   *
+   * A transfer is not on the chain when `sendAsset` returns. RGB posts the consignment first
+   * and the recipient validates it; only then does the sender broadcast, because a
+   * transaction broadcast before the recipient could validate can leave the asset
+   * unrecoverable. {@link refresh} is what notices the acknowledgement and broadcasts.
+   *
+   * So a wallet that sends and never refreshes again has not sent anything. Anything driving
+   * this to completion — a timer, an event on opening — asks here whether it still needs to.
+   *
+   * @returns {Promise<Array<Object>>} The outgoing transfers still waiting.
+   */
+  async pendingHandovers () {
+    const transfers = await this.listTransfers()
+
+    return transfers.filter((t) => t.kind === 'Send' && t.status === 'WaitingCounterparty')
   }
 
   /**
