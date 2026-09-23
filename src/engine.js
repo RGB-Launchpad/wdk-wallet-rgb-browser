@@ -16,7 +16,6 @@
 
 import { bid, clearingRate } from './fee.js'
 import { buildToSignPsbt, extractWitness, signatureFromWitness } from './bip322.js'
-import { dataDirOf } from './snapshots.js'
 import { explainSendError, freeSlots, slotBlocker, slotsToCreate } from './slots.js'
 import serialQueue from './serial-queue.js'
 
@@ -175,9 +174,9 @@ export default class Engine {
     const keys = restoreKeys(this._config.network, mnemonic)
 
     this._wallet = await WasmWallet.create(JSON.stringify({
-      // The IndexedDB key is `dataDir/<master fingerprint>`, so the network has to be part
-      // of it. A shared key loads the other chain's snapshot and BDK rejects it.
-      dataDir: dataDirOf(this._config.network),
+      // The IndexedDB key is `dataDir/<master fingerprint>`. It carries the network by
+      // default, because a shared key loads the other chain's snapshot and BDK rejects it.
+      dataDir: this._config.dataDir,
       bitcoinNetwork: this._config.network,
       databaseType: 'Sqlite',
       maxAllocationsPerUtxo: this._config.slots.maxAllocationsPerUtxo,

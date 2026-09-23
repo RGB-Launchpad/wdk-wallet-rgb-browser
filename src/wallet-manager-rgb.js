@@ -20,6 +20,7 @@ import Engine from './engine.js'
 import WalletAccountRgb from './wallet-account-rgb.js'
 import { feeFor } from './fee.js'
 import { SLOTS, payableRate } from './slots.js'
+import { dataDirOf } from './snapshots.js'
 
 /**
  * Public indexers, so the module works out of the box on the test networks. They are
@@ -44,6 +45,7 @@ const COIN_TYPE = { Mainnet: 0 }
  * @typedef {Object} RgbWalletConfig
  * @property {string} [network] - The Bitcoin network: `Mainnet`, `Signet`, `Testnet4` or `Regtest`. Defaults to `Signet`.
  * @property {string} [esploraUrl] - The Esplora indexer. Defaults to mempool.space's public endpoint for the network; required on Regtest.
+ * @property {string} [dataDir] - Where the wallet's IndexedDB snapshot is keyed. Defaults to one derived from the network.
  * @property {string} [proxyUrl] - The RGB proxy that carries consignments. Required to receive or to send.
  * @property {Object} [bindings] - The rgb-lib WebAssembly bindings module. Defaults to `@utexo/rgb-lib-wasm`, imported on demand.
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
@@ -90,9 +92,15 @@ export default class WalletManagerRgb extends WalletManager {
     // insufficient allocations on a wallet that is plainly holding bitcoin.
     fee.max = Math.min(fee.max, payableRate(slots))
 
+    // Two chains can both call themselves Regtest, and rgb-lib cannot tell them apart: the
+    // snapshot would be loaded for the wrong one and BDK would refuse to sync against it.
+    // A consumer that talks to more than one such chain gives each its own key.
+    const dataDir = config.dataDir || dataDirOf(network)
+
     /** @private */
     this._config = {
       network,
+      dataDir,
       esploraUrl,
       proxyUrl: config.proxyUrl || null,
       minConfirmations: config.minConfirmations ?? 1,

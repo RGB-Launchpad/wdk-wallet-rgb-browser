@@ -8,6 +8,7 @@
  * @typedef {Object} RgbWalletConfig
  * @property {string} [network] - The Bitcoin network: `Mainnet`, `Signet`, `Testnet4` or `Regtest`. Defaults to `Signet`.
  * @property {string} [esploraUrl] - The Esplora indexer. Defaults to mempool.space's public endpoint for the network; required on Regtest.
+ * @property {string} [dataDir] - Where the wallet's IndexedDB snapshot is keyed. Defaults to one derived from the network.
  * @property {string} [proxyUrl] - The RGB proxy that carries consignments. Required to receive or to send.
  * @property {Object} [bindings] - The rgb-lib WebAssembly bindings module. Defaults to `@utexo/rgb-lib-wasm`, imported on demand.
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
@@ -76,6 +77,10 @@ export type RgbWalletConfig = {
      * - The Esplora indexer. Defaults to mempool.space's public endpoint for the network; required on Regtest.
      */
     esploraUrl?: string;
+    /**
+     * - Where the wallet's IndexedDB snapshot is keyed. Defaults to one derived from the network.
+     */
+    dataDir?: string;
     /**
      * - The RGB proxy that carries consignments. Required to receive or to send.
      */
