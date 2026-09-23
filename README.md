@@ -128,6 +128,23 @@ signature, which is what a verifier needs.
 this module nor the bindings underneath it provide; use a Bitcoin library on the verifying
 side.
 
+## A send is not sent
+
+`transfer()` puts nothing on the chain. RGB posts the consignment to the proxy and waits: the
+recipient fetches it, validates it, and acknowledges. Only then does the sender broadcast,
+because a transaction broadcast before the recipient could validate can leave the asset
+unrecoverable.
+
+So the `hash` it returns names a transaction that is not on the network yet, and `refresh()`
+is what eventually puts it there. **A wallet that sends and never refreshes again has not sent
+anything.** `pendingHandovers()` says whether any send is still waiting, so a consumer can
+drive them to completion — on a timer, when it reopens, whenever suits it — rather than
+leaving the user to discover that nothing happened.
+
+Two consequences worth designing for: the interface should not tell the user it was sent, and
+completion needs the wallet open, since refreshing needs the engine and the engine needs the
+recovery phrase.
+
 ## Two things a browser wallet gets wrong against a live chain
 
 Both were found by running this module against a real regtest chain, and both look like the
