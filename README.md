@@ -165,6 +165,35 @@ npm run build:example
 `npm test` does not include the browser test: it needs a browser binary, and a package's
 default test run should not.
 
+### Against a real chain
+
+`npm run test:live` opens two wallets in one page, issues an asset in one, invoices it from
+the other, sends it, and checks that both sides settle. The indexer, the proxy and rgb-lib's
+transfer state machine are only exercised here; every bug this module has had so far was one
+the offline tests agreed with.
+
+It needs a chain you control, named through the environment so that no endpoint of anyone's
+lives in this repository:
+
+| Variable | What it is |
+|---|---|
+| `RGB_LIVE_ESPLORA` | The Esplora API, e.g. `http://127.0.0.1:8094/regtest/api`. |
+| `RGB_LIVE_PROXY` | The RGB proxy, e.g. `rpc://127.0.0.1:8787/json-rpc`. |
+| `RGB_LIVE_FUND` | Shell command that funds an address. `{address}` and `{btc}` are substituted. |
+| `RGB_LIVE_MINE` | Shell command that mines blocks. `{blocks}` is substituted. |
+| `RGB_LIVE_NETWORK` | Defaults to `Regtest`. |
+| `RGB_LIVE_BINDINGS` | Another build of the bindings to test against, as a path to its JavaScript. The `.wasm` beside it is used too — the two halves of a build go together. |
+| `RGB_LIVE_CACHE_MS` | How long to wait for the indexer's cache to expire after mining. Defaults to 11000. |
+
+A regtest with an Esplora API is one command:
+
+```sh
+docker run -d -p 8094:80 -e NO_PRECACHE=1 -e NO_REGTEST_MINING=1   blockstream/esplora /srv/explorer/run.sh bitcoin-regtest explorer
+```
+
+Its internal indexer waits for a first block, so mine 101 before anything else, and use the
+same `bitcoin-cli` for `RGB_LIVE_FUND` and `RGB_LIVE_MINE`.
+
 ## Licence
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

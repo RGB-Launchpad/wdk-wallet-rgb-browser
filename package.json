@@ -21,7 +21,8 @@
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
     "test:browser": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.browser.config.js",
     "build:example": "node examples/browser/build.js",
-    "build:types": "tsc"
+    "build:types": "tsc",
+    "test:live": "node tests/live/live.mjs"
   },
   "peerDependencies": {
     "@tetherto/wdk-wallet": "^1.0.0-beta.15",
@@ -51,7 +52,8 @@
   "standard": {
     "ignore": [
       "tests/**/*.js",
-      "examples/browser/dist/**"
+      "examples/browser/dist/**",
+      "tests/live/dist/**"
     ],
     "env": [
       "browser"
