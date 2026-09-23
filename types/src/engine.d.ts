@@ -133,6 +133,59 @@ export default class Engine {
         minutes?: number;
     }): Promise<any>;
     /**
+     * Creates an address to receive an asset through a witness transaction, which needs no
+     * free allocation slot: the sender creates the output that carries the asset.
+     *
+     * The sender pays for that output, so a witness receive costs the sender more than a blind
+     * one. It is what a wallet with no slots can still do.
+     *
+     * @param {Object} [options] - The invoice.
+     * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
+     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @returns {Promise<Object>} The invoice.
+     */
+    witnessReceive({ assetId, minutes }?: {
+        assetId?: string;
+        minutes?: number;
+    }): Promise<any>;
+    /**
+     * Issues a new asset. The whole supply is allocated to this wallet, spread over the
+     * amounts given, and each amount takes an allocation slot.
+     *
+     * @param {Object} options - The asset.
+     * @param {string} options.ticker - The ticker.
+     * @param {string} options.name - The name.
+     * @param {number} options.precision - Decimal places.
+     * @param {Array<number | bigint | string>} options.amounts - The issued amounts, one per allocation.
+     * @param {'Nia' | 'Ifa'} [options.schema] - `Nia` is fixed supply, `Ifa` can be inflated later. Defaults to `Nia`.
+     * @param {Array<number | bigint | string>} [options.inflationAmounts] - Inflation allowances, for `Ifa` only.
+     * @param {string} [options.rejectListUrl] - Reject list, for `Ifa` only.
+     * @returns {Promise<Object>} The issued asset.
+     */
+    issueAsset(options: {
+        ticker: string;
+        name: string;
+        precision: number;
+        amounts: Array<number | bigint | string>;
+        schema?: "Nia" | "Ifa";
+        inflationAmounts?: Array<number | bigint | string>;
+        rejectListUrl?: string;
+    }): Promise<any>;
+    /**
+     * Signs a message with the wallet's own address, as a BIP-322 simple signature.
+     *
+     * rgb-lib exposes no message signing, so the message is wrapped in the pair of virtual
+     * transactions BIP-322 defines and the wallet signs that PSBT. The signature is the
+     * resulting witness stack.
+     *
+     * @param {string} message - The message, signed verbatim.
+     * @returns {Promise<{ address: string, signature: string }>} The address and the signature.
+     */
+    signMessage(message: string): Promise<{
+        address: string;
+        signature: string;
+    }>;
+    /**
      * Picks up consignments and advances the transfer state machine. The cost grows with the
      * transfer history, because every consignment is validated on the device.
      *

@@ -37,6 +37,17 @@ export {
 } from './src/slots.js'
 
 export {
+  BIP322_TAG,
+  buildToSignPsbt,
+  buildVirtualTxs,
+  decodeAddress,
+  extractWitness,
+  scriptPubKeyOf,
+  signatureFromWitness,
+  taggedHash
+} from './src/bip322.js'
+
+export {
   SNAPSHOT_DB,
   SNAPSHOT_STORE,
   dataDirOf,

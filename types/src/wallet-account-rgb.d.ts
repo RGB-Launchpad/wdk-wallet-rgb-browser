@@ -127,6 +127,43 @@ export default class WalletAccountRgb {
         minutes?: number;
     }): Promise<any>;
     /**
+     * Creates an address to receive an asset through a witness transaction, which needs no
+     * free allocation slot: the sender creates the output the asset lands on, and pays for it.
+     *
+     * @param {Object} [options] - The invoice.
+     * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
+     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @returns {Promise<Object>} The invoice.
+     */
+    receiveAssetToWitness(options?: {
+        assetId?: string;
+        minutes?: number;
+    }): Promise<any>;
+    /**
+     * Issues a new asset, with the whole supply allocated to this wallet.
+     *
+     * @param {Object} options - The asset. See the engine's `issueAsset` for the fields.
+     * @returns {Promise<Object>} The issued asset.
+     */
+    issueAsset(options: any): Promise<any>;
+    /**
+     * Signs a message as a BIP-322 simple signature, with the wallet's own address.
+     *
+     * @param {string} message - The message, signed verbatim.
+     * @returns {Promise<string>} The signature, base64 encoded.
+     */
+    sign(message: string): Promise<string>;
+    /**
+     * The address a signature from {@link sign} is checked against, and the signature itself.
+     *
+     * @param {string} message - The message.
+     * @returns {Promise<{ address: string, signature: string }>} Both halves.
+     */
+    signMessage(message: string): Promise<{
+        address: string;
+        signature: string;
+    }>;
+    /**
      * Creates the empty colored UTXOs that receiving requires. Receiving with no free slot
      * fails, and slots take a confirmed on-chain transaction to make.
      *

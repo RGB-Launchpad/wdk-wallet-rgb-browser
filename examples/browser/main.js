@@ -44,12 +44,24 @@ export async function runRgbExample (config = {}) {
   const transfers = await account.listTransfers()
   const slots = await account.getFreeSlots()
 
-  let receiveError = null
+  // Signing needs the wallet, not the chain, so it works with no indexer.
+  const signed = await account.signMessage('Hello World')
 
-  try {
-    await account.receiveAsset()
-  } catch (error) {
-    receiveError = error.message
+  const failures = {}
+
+  for (const [name, attempt] of [
+    ['receive', () => account.receiveAsset()],
+    ['witnessReceive', () => account.receiveAssetToWitness()],
+    ['issue', () => account.issueAsset({
+      ticker: 'DEMO', name: 'Demo asset', precision: 0, amounts: [1000]
+    })]
+  ]) {
+    try {
+      await attempt()
+      failures[name] = null
+    } catch (error) {
+      failures[name] = error.message
+    }
   }
 
   wdk.dispose()
@@ -61,7 +73,9 @@ export async function runRgbExample (config = {}) {
     assets: assets.length,
     transfers: transfers.length,
     slots,
-    receiveError
+    signedBy: signed.address,
+    signature: signed.signature,
+    failures
   }
 }
 

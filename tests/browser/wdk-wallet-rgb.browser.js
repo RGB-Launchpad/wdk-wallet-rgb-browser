@@ -81,8 +81,22 @@ describe('an RGB wallet in a browser', () => {
     expect(result.slots).toBe(0)
   })
 
+  test('signs a message with the wallet itself, which needs no chain', () => {
+    expect(result.signedBy).toBe(result.address)
+
+    // A BIP-322 simple signature for a taproot key-path spend: one witness item, a 64-byte
+    // Schnorr signature, so 1 + 1 + 64 bytes once the stack is serialised.
+    const witness = Uint8Array.from(atob(result.signature), (c) => c.charCodeAt(0))
+
+    expect(witness[0]).toBe(1)
+    expect(witness[1]).toBe(64)
+    expect(witness.length).toBe(66)
+  })
+
   test('says what is missing rather than failing silently', () => {
-    expect(result.receiveError).toMatch(/indexer is unreachable/i)
+    expect(result.failures.receive).toMatch(/indexer is unreachable/i)
+    expect(result.failures.witnessReceive).toMatch(/indexer is unreachable/i)
+    expect(result.failures.issue).toMatch(/needs 1 free slots/i)
   })
 
   test('loads without a runtime error', () => {

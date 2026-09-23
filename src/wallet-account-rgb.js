@@ -199,6 +199,51 @@ export default class WalletAccountRgb extends IWalletAccount {
   }
 
   /**
+   * Creates an address to receive an asset through a witness transaction, which needs no
+   * free allocation slot: the sender creates the output the asset lands on, and pays for it.
+   *
+   * @param {Object} [options] - The invoice.
+   * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
+   * @param {number} [options.minutes] - How long the invoice stays valid.
+   * @returns {Promise<Object>} The invoice.
+   */
+  async receiveAssetToWitness (options = {}) {
+    return this._engine.witnessReceive(options)
+  }
+
+  /**
+   * Issues a new asset, with the whole supply allocated to this wallet.
+   *
+   * @param {Object} options - The asset. See the engine's `issueAsset` for the fields.
+   * @returns {Promise<Object>} The issued asset.
+   */
+  async issueAsset (options) {
+    return this._engine.issueAsset(options)
+  }
+
+  /**
+   * Signs a message as a BIP-322 simple signature, with the wallet's own address.
+   *
+   * @param {string} message - The message, signed verbatim.
+   * @returns {Promise<string>} The signature, base64 encoded.
+   */
+  async sign (message) {
+    const { signature } = await this._engine.signMessage(message)
+
+    return signature
+  }
+
+  /**
+   * The address a signature from {@link sign} is checked against, and the signature itself.
+   *
+   * @param {string} message - The message.
+   * @returns {Promise<{ address: string, signature: string }>} Both halves.
+   */
+  async signMessage (message) {
+    return this._engine.signMessage(message)
+  }
+
+  /**
    * Creates the empty colored UTXOs that receiving requires. Receiving with no free slot
    * fails, and slots take a confirmed on-chain transaction to make.
    *

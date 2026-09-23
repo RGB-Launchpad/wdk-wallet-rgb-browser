@@ -52,6 +52,15 @@ const invoice = await account.receiveAsset({ assetId })
 
 // Sending goes to an invoice, not to an address.
 await account.transfer({ token: assetId, recipient: theirInvoice, amount: 1000n })
+
+// A wallet with no free slot can still receive, if the sender pays for the output.
+const witnessInvoice = await account.receiveAssetToWitness({ assetId })
+
+// Issuing allocates the whole supply here, one slot per amount.
+await account.issueAsset({ ticker: 'DEMO', name: 'Demo asset', precision: 8, amounts: [21_000_000n] })
+
+// Proving the wallet holds its address, as a BIP-322 simple signature.
+const signature = await account.sign('Hello World')
 ```
 
 A runnable page is in [`examples/browser`](examples/browser).
@@ -107,6 +116,18 @@ the recipient through a proxy and be validated there. `listTransfers()` shows th
 which is why a slot that is empty but small is worse than no slot at all, and why
 `explainSendError` exists.
 
+## Signing messages
+
+rgb-lib exposes no message signing, so `sign(message)` builds the pair of virtual
+transactions BIP-322 defines, has the wallet sign that PSBT, and returns the resulting
+witness stack. The construction is in [`src/bip322.js`](src/bip322.js) and is pinned by the
+specification's own vectors. `signMessage(message)` returns the address alongside the
+signature, which is what a verifier needs.
+
+`verify` is not implemented. Checking a signature means Schnorr verification, which neither
+this module nor the bindings underneath it provide; use a Bitcoin library on the verifying
+side.
+
 ## One account
 
 rgb-lib holds one wallet per recovery phrase and derives its keychains inside it, so this
@@ -118,7 +139,7 @@ a silently different wallet.
 ```bash
 npm install
 npm run lint
-npm test                      # the pure logic, on Node
+npm test                      # the pure logic and the BIP-322 vectors, on Node
 npx playwright install chromium
 npm run test:browser          # the wallet itself, in Chromium
 npm run build:example

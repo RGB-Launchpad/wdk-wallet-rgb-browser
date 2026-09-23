@@ -15,6 +15,7 @@
 'use strict'
 
 import { bid, clearingRate } from './fee.js'
+import { buildToSignPsbt, extractWitness, signatureFromWitness } from './bip322.js'
 import { dataDirOf } from './snapshots.js'
 import { explainSendError, freeSlots, slotBlocker, slotsToCreate } from './slots.js'
 import serialQueue from './serial-queue.js'
@@ -350,6 +351,111 @@ export default class Engine {
       await this.wallet.flush()
 
       return this.plain(invoice)
+    })
+  }
+
+  /**
+   * Creates an address to receive an asset through a witness transaction, which needs no
+   * free allocation slot: the sender creates the output that carries the asset.
+   *
+   * The sender pays for that output, so a witness receive costs the sender more than a blind
+   * one. It is what a wallet with no slots can still do.
+   *
+   * @param {Object} [options] - The invoice.
+   * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
+   * @param {number} [options.minutes] - How long the invoice stays valid.
+   * @returns {Promise<Object>} The invoice.
+   */
+  async witnessReceive ({ assetId, minutes } = {}) {
+    this.needOnline()
+
+    if (!this._config.proxyUrl) {
+      throw new Error('No proxyUrl is configured. An invoice must name where the consignment goes.')
+    }
+
+    return this.run(async () => {
+      const invoice = this.wallet.witnessReceive(
+        assetId || undefined,
+        'Any',
+        (minutes || this._config.invoiceMinutes) * 60,
+        [this._config.proxyUrl],
+        this._config.minConfirmations
+      )
+
+      await this.wallet.flush()
+
+      return this.plain(invoice)
+    })
+  }
+
+  /**
+   * Issues a new asset. The whole supply is allocated to this wallet, spread over the
+   * amounts given, and each amount takes an allocation slot.
+   *
+   * @param {Object} options - The asset.
+   * @param {string} options.ticker - The ticker.
+   * @param {string} options.name - The name.
+   * @param {number} options.precision - Decimal places.
+   * @param {Array<number | bigint | string>} options.amounts - The issued amounts, one per allocation.
+   * @param {'Nia' | 'Ifa'} [options.schema] - `Nia` is fixed supply, `Ifa` can be inflated later. Defaults to `Nia`.
+   * @param {Array<number | bigint | string>} [options.inflationAmounts] - Inflation allowances, for `Ifa` only.
+   * @param {string} [options.rejectListUrl] - Reject list, for `Ifa` only.
+   * @returns {Promise<Object>} The issued asset.
+   */
+  async issueAsset (options) {
+    const { ticker, name, precision, amounts, schema = 'Nia' } = options
+
+    if (!ticker || !name) throw new Error('An asset needs a ticker and a name.')
+    if (!Array.isArray(amounts) || !amounts.length) throw new Error('An asset needs an amount.')
+    if (!Number.isInteger(precision)) throw new Error('Precision must be an integer.')
+
+    if (schema === 'Ifa' && this.network === 'Mainnet') {
+      throw new Error('rgb-lib does not open a mainnet wallet that supports IFA, so it cannot issue one.')
+    }
+
+    return this.run(async () => {
+      if (freeSlots(this.wallet.listUnspents(false), this._config.slots) < amounts.length) {
+        throw new Error(`Issuing ${amounts.length} allocations needs ${amounts.length} free slots. Create slots first.`)
+      }
+
+      const values = amounts.map((a) => BigInt(a))
+
+      const asset = schema === 'Ifa'
+        ? this.wallet.issueAssetIfa(
+          ticker,
+          name,
+          precision,
+          values,
+          (options.inflationAmounts || []).map((a) => BigInt(a)),
+          options.rejectListUrl ?? undefined
+        )
+        : this.wallet.issueAssetNia(ticker, name, precision, values)
+
+      await this.wallet.flush()
+
+      return this.plain(asset)
+    })
+  }
+
+  /**
+   * Signs a message with the wallet's own address, as a BIP-322 simple signature.
+   *
+   * rgb-lib exposes no message signing, so the message is wrapped in the pair of virtual
+   * transactions BIP-322 defines and the wallet signs that PSBT. The signature is the
+   * resulting witness stack.
+   *
+   * @param {string} message - The message, signed verbatim.
+   * @returns {Promise<{ address: string, signature: string }>} The address and the signature.
+   */
+  async signMessage (message) {
+    if (typeof message !== 'string' || !message) throw new Error('A message is required.')
+
+    return this.run(async () => {
+      const address = this.wallet.getAddress()
+      const psbt = await buildToSignPsbt(address, message)
+      const signed = this.wallet.signPsbt(psbt)
+
+      return { address, signature: signatureFromWitness(extractWitness(signed)) }
     })
   }
 
