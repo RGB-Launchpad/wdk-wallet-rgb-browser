@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 - 2026-09-26
+
+Documentation and repository hygiene; no code changes.
+
+- README gains npm and license badges, a beta note, and a short supply-chain statement.
+- The changelog ships in the package.
+- The repository gains CI (lint, type build, Node and Chromium tests), issue and PR
+  templates, and dependabot.
+
 ## 0.1.0 - 2026-09-26
 
 First public release.
