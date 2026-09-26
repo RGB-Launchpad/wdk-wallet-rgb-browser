@@ -1,4 +1,4 @@
-# @rgb-launchpad/wdk-wallet-rgb
+# @darkhorse/wdk-wallet-rgb
 
 A [WDK](https://docs.wdk.tether.io/) wallet module for RGB assets on Bitcoin, running in the
 browser.
@@ -25,14 +25,14 @@ covers apps built on Node.js and Bare, this one covers pages and browser extensi
 ## Installation
 
 ```bash
-npm install @rgb-launchpad/wdk-wallet-rgb @tetherto/wdk-wallet @utexo/rgb-lib-wasm
+npm install @darkhorse/wdk-wallet-rgb @tetherto/wdk-wallet @utexo/rgb-lib-wasm
 ```
 
 ## Quick start
 
 ```javascript
 import WDK from '@tetherto/wdk'
-import WalletManagerRgb from '@rgb-launchpad/wdk-wallet-rgb'
+import WalletManagerRgb from '@darkhorse/wdk-wallet-rgb'
 
 const wdk = new WDK(seedPhrase).registerWallet('rgb', WalletManagerRgb, {
   network: 'Signet',
