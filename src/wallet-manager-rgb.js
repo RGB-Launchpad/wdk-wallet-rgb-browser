@@ -14,7 +14,7 @@
 
 'use strict'
 
-import WalletManager from '@tetherto/wdk-wallet'
+import WalletManager, { UnsupportedOperationError } from '@tetherto/wdk-wallet'
 
 import Engine from './engine.js'
 import WalletAccountRgb from './wallet-account-rgb.js'
@@ -99,7 +99,7 @@ export default class WalletManagerRgb extends WalletManager {
     const dataDir = config.dataDir || dataDirOf(network)
 
     /** @private */
-    this._config = {
+    this._cfg = {
       network,
       dataDir,
       esploraUrl,
@@ -132,15 +132,20 @@ export default class WalletManagerRgb extends WalletManager {
    * @throws {Error} If an index other than 0 is asked for.
    */
   async getAccount (index = 0) {
+    if (typeof index === 'string') {
+      throw new UnsupportedOperationError(
+        'getAccount(signerName): an RGB wallet has no signers; the engine holds the keys.'
+      )
+    }
     if (index !== 0) {
       throw new Error(`An RGB wallet has one account; index ${index} does not exist.`)
     }
 
-    if (!this._accounts[this._config.path]) {
-      this._accounts[this._config.path] = new WalletAccountRgb(await this._open(), 0)
+    if (!this._accounts[this._cfg.path]) {
+      this._accounts[this._cfg.path] = new WalletAccountRgb(await this._open(), 0)
     }
 
-    return this._accounts[this._config.path]
+    return this._accounts[this._cfg.path]
   }
 
   /**
@@ -149,8 +154,8 @@ export default class WalletManagerRgb extends WalletManager {
    * @throws {Error} If the path is not this wallet's.
    */
   async getAccountByPath (path) {
-    if (path !== this._config.path) {
-      throw new Error(`An RGB wallet has one account, at ${this._config.path}.`)
+    if (path !== this._cfg.path) {
+      throw new Error(`An RGB wallet has one account, at ${this._cfg.path}.`)
     }
 
     return this.getAccount(0)
@@ -165,7 +170,7 @@ export default class WalletManagerRgb extends WalletManager {
   async getFeeRates () {
     const engine = await this._open()
     const normal = await engine.feeRate()
-    const fast = BigInt(Math.min(this._config.fee.max, Math.ceil(Number(normal) * 1.5)))
+    const fast = BigInt(Math.min(this._cfg.fee.max, Math.ceil(Number(normal) * 1.5)))
 
     return { normal, fast: fast > normal ? fast : normal }
   }
@@ -193,7 +198,7 @@ export default class WalletManagerRgb extends WalletManager {
         if (!this._mnemonic) throw new Error('The wallet manager has been disposed.')
 
         const bindings = this._bindings || await import('@utexo/rgb-lib-wasm')
-        const engine = new Engine(bindings, this._config)
+        const engine = new Engine(bindings, this._cfg)
 
         await engine.open(this._mnemonic)
 

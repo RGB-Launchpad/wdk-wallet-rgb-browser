@@ -8,14 +8,21 @@
  * reach the recipient through a proxy and be validated there. `listTransfers` shows that
  * state; `refresh` advances it.
  */
-export default class WalletAccountRgb {
+export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getAddress(): Promise<string>;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getBalance(): Promise<bigint>;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getTokenBalance(tokenAddress: string): Promise<bigint>;
+
     /**
      * @param {import('./engine.js').default} engine - The open engine.
      * @param {number} index - The account index.
      */
     constructor(engine: import("./engine.js").default, index: number);
-    /** @private */
-    private _engine;
     /** @private */
     private _index;
     /** @private */
@@ -29,58 +36,28 @@ export default class WalletAccountRgb {
      * without handing the key back out; there is nothing to return that would not be a copy
      * of the secret in JavaScript memory.
      *
+     * @returns {import('@tetherto/wdk-wallet').KeyPair} Never returns.
      * @throws {UnsupportedOperationError} Always.
      */
-    get keyPair(): void;
-    /** @returns {Promise<string>} The wallet's Bitcoin address. */
-    getAddress(): Promise<string>;
-    /** @returns {Promise<bigint>} The spendable Bitcoin balance, in sats. */
-    getBalance(): Promise<bigint>;
-    /** @returns {Promise<Object>} The full Bitcoin balance, vanilla and colored. */
-    getBtcBalance(): Promise<any>;
+    get keyPair(): import("@tetherto/wdk-wallet").KeyPair;
     /**
-     * @param {string} tokenAddress - The RGB asset id.
-     * @returns {Promise<bigint>} The settled balance.
+     * Not available in the WDK's sense: an RGB transfer is not a transaction the caller builds
+     * and this wallet signs. The PSBT is built and signed inside {@link transfer} and
+     * {@link sendTransaction}, because only rgb-lib knows which colored UTXOs go into it.
+     *
+     * @returns {Promise<unknown>} Never returns.
+     * @throws {UnsupportedOperationError} Always.
      */
-    getTokenBalance(tokenAddress: string): Promise<bigint>;
+    signTransaction(): Promise<unknown>;
     /**
-     * @param {string} assetId - The RGB asset id.
-     * @returns {Promise<Object>} The balance, settled, future and spendable.
+     * Not available: message signing here is BIP-322 over a taproot key, and verifying it needs
+     * a Schnorr check that the WebAssembly bindings do not expose. The base class would throw
+     * the same error with a less specific reason.
+     *
+     * @returns {Promise<boolean>} Never returns.
+     * @throws {UnsupportedOperationError} Always.
      */
-    getAssetBalance(assetId: string): Promise<any>;
-    /** @returns {Promise<Array<Object>>} The RGB assets this wallet holds. */
-    listAssets(): Promise<Array<any>>;
-    /**
-     * @param {string} [assetId] - Restrict to one asset.
-     * @returns {Promise<Array<Object>>} The transfers, newest first.
-     */
-    listTransfers(assetId?: string): Promise<Array<any>>;
-    /**
-     * @param {string} hash - The txid.
-     * @returns {Promise<Object | null>} The transfer that transaction produced.
-     */
-    getTransactionReceipt(hash: string): Promise<any | null>;
-    /** @returns {Promise<{ fee: bigint }>} The rate a Bitcoin send would bid, in sat/vB. */
-    quoteSendTransaction(): Promise<{
-        fee: bigint;
-    }>;
-    /** @returns {Promise<{ fee: bigint }>} The rate an asset transfer would bid, in sat/vB. */
-    quoteTransfer(): Promise<{
-        fee: bigint;
-    }>;
-    /** @returns {Promise<number>} Free allocation slots. */
-    getFreeSlots(): Promise<number>;
-    /**
-     * @returns {Promise<{ network: string, online: boolean, onlineError: string | null, persisted: boolean }>} What the wallet knows about its own situation.
-     */
-    getStatus(): Promise<{
-        network: string;
-        online: boolean;
-        onlineError: string | null;
-        persisted: boolean;
-    }>;
-    /** @returns {Promise<boolean | null>} Whether a backup is due. */
-    isBackupNeeded(): Promise<boolean | null>;
+    verify(): Promise<boolean>;
     /**
      * Sends plain Bitcoin. Spends the vanilla keychain only, never a UTXO carrying an asset.
      *
