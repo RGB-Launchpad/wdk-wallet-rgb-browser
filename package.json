@@ -1,5 +1,5 @@
 {
-  "name": "@darkhorse/wdk-wallet-rgb",
+  "name": "@darkhorse-wallet/wdk-wallet-rgb",
   "version": "0.1.0",
   "description": "WDK wallet module for RGB assets on Bitcoin, running in the browser on rgb-lib's WebAssembly bindings.",
   "keywords": [
