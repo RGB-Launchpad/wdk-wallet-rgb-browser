@@ -35,7 +35,7 @@
     "buffer": "6.0.3",
     "cross-env": "7.0.3",
     "esbuild": "0.28.2",
-    "jest": "30.4.2",
+    "jest": "30.5.2",
     "playwright": "1.63.0",
     "standard": "17.1.2",
     "typescript": "5.8.3"
