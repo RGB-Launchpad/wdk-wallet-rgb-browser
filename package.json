@@ -69,7 +69,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser.git"
+    "url": "git+https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser.git"
   },
   "homepage": "https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser#readme",
   "bugs": "https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser/issues"
