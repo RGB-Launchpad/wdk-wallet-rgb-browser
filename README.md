@@ -1,5 +1,11 @@
 # @darkhorse-wallet/wdk-wallet-rgb
 
+[![npm version](https://img.shields.io/npm/v/%40darkhorse-wallet%2Fwdk-wallet-rgb?style=flat-square)](https://www.npmjs.com/package/@darkhorse-wallet/wdk-wallet-rgb)
+[![license](https://img.shields.io/npm/l/%40darkhorse-wallet%2Fwdk-wallet-rgb?style=flat-square)](https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser/blob/main/LICENSE)
+
+**Note**: This package is currently in beta, as is the WDK itself. Please test thoroughly in
+development environments before using in production.
+
 A [WDK](https://docs.wdk.tether.io/) wallet module for RGB assets on Bitcoin, running in the
 browser.
 
@@ -27,6 +33,10 @@ covers apps built on Node.js and Bare, this one covers pages and browser extensi
 ```bash
 npm install @darkhorse-wallet/wdk-wallet-rgb @tetherto/wdk-wallet @utexo/rgb-lib-wasm
 ```
+
+The package itself has no runtime dependencies — the WDK framework and the WebAssembly
+bindings are peers, so you choose and audit those versions yourself — and no install
+scripts.
 
 ## Quick start
 
