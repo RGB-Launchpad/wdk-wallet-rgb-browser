@@ -1,5 +1,5 @@
 {
-  "name": "@rgb-launchpad/wdk-wallet-rgb",
+  "name": "@darkhorse/wdk-wallet-rgb",
   "version": "0.1.0",
   "description": "WDK wallet module for RGB assets on Bitcoin, running in the browser on rgb-lib's WebAssembly bindings.",
   "keywords": [
@@ -10,7 +10,7 @@
     "browser",
     "wasm"
   ],
-  "author": "RGB Launchpad",
+  "author": "Darkhorse",
   "license": "Apache-2.0",
   "type": "module",
   "main": "index.js",
