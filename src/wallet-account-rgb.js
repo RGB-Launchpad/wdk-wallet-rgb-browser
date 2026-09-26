@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { IWalletAccount, UnsupportedOperationError } from '@tetherto/wdk-wallet'
+import { UnsupportedOperationError } from '@tetherto/wdk-wallet'
 
 import WalletAccountReadOnlyRgb from './wallet-account-read-only-rgb.js'
 
@@ -28,13 +28,13 @@ import WalletAccountReadOnlyRgb from './wallet-account-read-only-rgb.js'
  * reach the recipient through a proxy and be validated there. `listTransfers` shows that
  * state; `refresh` advances it.
  */
-export default class WalletAccountRgb extends IWalletAccount {
+export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
   /**
    * @param {import('./engine.js').default} engine - The open engine.
    * @param {number} index - The account index.
    */
   constructor (engine, index) {
-    super()
+    super(engine)
 
     /** @private */
     this._engine = engine
@@ -61,10 +61,39 @@ export default class WalletAccountRgb extends IWalletAccount {
    * without handing the key back out; there is nothing to return that would not be a copy
    * of the secret in JavaScript memory.
    *
+   * @returns {import('@tetherto/wdk-wallet').KeyPair} Never returns.
    * @throws {UnsupportedOperationError} Always.
    */
   get keyPair () {
     throw new UnsupportedOperationError('keyPair is not exposed by the RGB engine.')
+  }
+
+  /**
+   * Not available in the WDK's sense: an RGB transfer is not a transaction the caller builds
+   * and this wallet signs. The PSBT is built and signed inside {@link transfer} and
+   * {@link sendTransaction}, because only rgb-lib knows which colored UTXOs go into it.
+   *
+   * @returns {Promise<unknown>} Never returns.
+   * @throws {UnsupportedOperationError} Always.
+   */
+  async signTransaction () {
+    throw new UnsupportedOperationError(
+      'signTransaction: RGB signs the PSBT it builds itself, inside transfer.'
+    )
+  }
+
+  /**
+   * Not available: message signing here is BIP-322 over a taproot key, and verifying it needs
+   * a Schnorr check that the WebAssembly bindings do not expose. The base class would throw
+   * the same error with a less specific reason.
+   *
+   * @returns {Promise<boolean>} Never returns.
+   * @throws {UnsupportedOperationError} Always.
+   */
+  async verify () {
+    throw new UnsupportedOperationError(
+      'verify: the engine signs BIP-322 but exposes no Schnorr verification to check one.'
+    )
   }
 
   /** @returns {Promise<string>} The wallet's Bitcoin address. */

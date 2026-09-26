@@ -6,38 +6,31 @@
  * the parameter's documentation: a "token" is an RGB asset id, and a transfer's "hash" is
  * the txid of the witness transaction.
  */
-export default class WalletAccountReadOnlyRgb {
+export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getAddress(): Promise<string>;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getBalance(): Promise<bigint>;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getTokenBalance(tokenAddress: string): Promise<bigint>;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getTransaction(hash: string): Promise<import('@tetherto/wdk-wallet').TransactionReceipt>;
+
     /**
      * @param {import('./engine.js').default} engine - The engine to read through.
      */
     constructor(engine: import("./engine.js").default);
     /** @protected */
     protected _engine: import("./engine.js").default;
-    /** @returns {Promise<string>} The wallet's Bitcoin address. */
-    getAddress(): Promise<string>;
-    /**
-     * The spendable Bitcoin balance, in sats.
-     *
-     * This is the vanilla balance: what a plain Bitcoin send may spend. The sats parked in the
-     * UTXOs that carry assets are not here, because they are not free to spend — they pay the
-     * fees of the transfers that move those assets. {@link getBtcBalance} returns both.
-     *
-     * @returns {Promise<bigint>} The balance in sats.
-     */
-    getBalance(): Promise<bigint>;
     /**
      * The full Bitcoin balance, vanilla and colored, settled and spendable.
      *
      * @returns {Promise<Object>} The balance.
      */
     getBtcBalance(): Promise<any>;
-    /**
-     * The balance of one RGB asset.
-     *
-     * @param {string} tokenAddress - The RGB asset id.
-     * @returns {Promise<bigint>} The settled balance, in the asset's own base units.
-     */
-    getTokenBalance(tokenAddress: string): Promise<bigint>;
     /**
      * The balance of one RGB asset, settled, future and spendable.
      *
@@ -114,3 +107,4 @@ export default class WalletAccountReadOnlyRgb {
      */
     isBackupNeeded(): Promise<boolean | null>;
 }
+import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';

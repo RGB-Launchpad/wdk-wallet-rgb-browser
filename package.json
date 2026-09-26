@@ -21,16 +21,16 @@
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
     "test:browser": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config jest.browser.config.js",
     "build:example": "node examples/browser/build.js",
-    "build:types": "tsc",
+    "build:types": "tsc && node scripts/fix-types.mjs",
     "test:live": "node tests/live/live.mjs"
   },
   "peerDependencies": {
-    "@tetherto/wdk-wallet": "^1.0.0-beta.15",
+    "@tetherto/wdk-wallet": "^1.0.0-beta.20",
     "@utexo/rgb-lib-wasm": "^1.0.0-beta.3"
   },
   "devDependencies": {
     "@tetherto/wdk": "1.0.0-beta.18",
-    "@tetherto/wdk-wallet": "1.0.0-beta.15",
+    "@tetherto/wdk-wallet": "1.0.0-beta.20",
     "@utexo/rgb-lib-wasm": "1.0.0-beta.3",
     "buffer": "6.0.3",
     "cross-env": "7.0.3",
@@ -66,5 +66,11 @@
     "LICENSE",
     "NOTICE",
     "README.md"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser.git"
+  },
+  "homepage": "https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser#readme",
+  "bugs": "https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser/issues"
 }

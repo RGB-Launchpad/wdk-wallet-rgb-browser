@@ -25,6 +25,15 @@
  * rather than a silently different wallet.
  */
 export default class WalletManagerRgb extends WalletManager {
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getFeeRates(): Promise<{ normal: bigint, fast: bigint }>;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    dispose(): void;
+
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getAccount(signerName: string): Promise<import('./wallet-account-rgb.js').default>;
+
     /**
      * @param {string} seedPhrase - The BIP-39 recovery phrase. Raw seed bytes are not enough: rgb-lib derives from the phrase.
      * @param {RgbWalletConfig} [config] - The configuration.
@@ -33,7 +42,7 @@ export default class WalletManagerRgb extends WalletManager {
     /** @private */
     private _mnemonic;
     /** @private */
-    private _config;
+    private _cfg;
     /** @private */
     private _bindings;
     /** @private */

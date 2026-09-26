@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { IWalletAccountReadOnly } from '@tetherto/wdk-wallet'
+import { UnsupportedOperationError, WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 /**
  * The reads of an RGB account, with nothing that signs. This is the view the WDK's policy
@@ -24,7 +24,7 @@ import { IWalletAccountReadOnly } from '@tetherto/wdk-wallet'
  * the parameter's documentation: a "token" is an RGB asset id, and a transfer's "hash" is
  * the txid of the witness transaction.
  */
-export default class WalletAccountReadOnlyRgb extends IWalletAccountReadOnly {
+export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
   /**
    * @param {import('./engine.js').default} engine - The engine to read through.
    */
@@ -117,6 +117,21 @@ export default class WalletAccountReadOnlyRgb extends IWalletAccountReadOnly {
     const transfers = await this._engine.listTransfers()
 
     return transfers.find((t) => t.txid === hash) ?? null
+  }
+
+  /**
+   * Not available: an RGB transfer anchors on-chain in a batch with others, so a witness
+   * txid does not resolve into a per-transfer finality receipt. {@link getTransactionReceipt}
+   * returns what this wallet knows about the transfer itself.
+   *
+   * @param {string} hash - The txid.
+   * @returns {Promise<import('@tetherto/wdk-wallet').TransactionReceipt>} Never returns.
+   * @throws {UnsupportedOperationError} Always.
+   */
+  async getTransaction (hash) { // eslint-disable-line no-unused-vars
+    throw new UnsupportedOperationError(
+      'getTransaction: RGB transfers anchor in batches, there is no per-transfer on-chain receipt.'
+    )
   }
 
   /**
