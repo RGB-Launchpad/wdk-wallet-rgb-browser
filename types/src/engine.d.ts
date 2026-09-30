@@ -102,6 +102,15 @@ export default class Engine {
      */
     listTransfers(assetId?: string): Promise<Array<any>>;
     /**
+     * The wallet's own transactions, newest first: plain Bitcoin sends and receives, slot
+     * housekeeping, and the transactions RGB sends anchored. Amounts in sats. Unconfirmed ones
+     * carry a `confirmations` count; a confirmed one reports `Settled`, since one confirmation
+     * is where this wallet settles.
+     *
+     * @returns {Promise<Array<Object>>} The transactions.
+     */
+    listTransactions(): Promise<Array<any>>;
+    /**
      * Free allocation slots. Receiving needs at least one.
      *
      * @returns {Promise<number>} How many allocations can still be received.

@@ -283,6 +283,26 @@ export default class Engine {
   }
 
   /**
+   * The wallet's own transactions, newest first: plain Bitcoin sends and receives, slot
+   * housekeeping, and the transactions RGB sends anchored. Amounts in sats. Unconfirmed ones
+   * carry a `confirmations` count; a confirmed one reports `Settled`, since one confirmation
+   * is where this wallet settles.
+   *
+   * @returns {Promise<Array<Object>>} The transactions.
+   */
+  async listTransactions () {
+    const txs = await this.run(() => this.plain(this.wallet.listTransactions()))
+    const shaped = txs.map((tx) => ({
+      ...tx,
+      status: tx.confirmationTime ? 'Settled' : 'WaitingConfirmations'
+    }))
+
+    return this._withConfirmations(shaped).sort((a, b) =>
+      (b.confirmationTime?.timestamp ?? Number.MAX_SAFE_INTEGER) -
+      (a.confirmationTime?.timestamp ?? Number.MAX_SAFE_INTEGER))
+  }
+
+  /**
    * Free allocation slots. Receiving needs at least one.
    *
    * @returns {Promise<number>} How many allocations can still be received.

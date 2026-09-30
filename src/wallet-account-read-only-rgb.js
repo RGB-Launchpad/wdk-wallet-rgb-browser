@@ -108,6 +108,16 @@ export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
   }
 
   /**
+   * The wallet's own transactions, newest first, with a confirmation count on the ones still
+   * waiting. Plain Bitcoin sends and receives are here; {@link listTransfers} knows only RGB.
+   *
+   * @returns {Promise<Array<Object>>} The transactions.
+   */
+  async listTransactions () {
+    return this._engine.listTransactions()
+  }
+
+  /**
    * The transfer a witness transaction produced.
    *
    * @param {string} hash - The txid.

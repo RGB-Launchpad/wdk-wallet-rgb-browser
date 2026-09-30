@@ -141,6 +141,15 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
   }
 
   /**
+   * The wallet's own transactions, newest first: plain Bitcoin sends and receives included.
+   *
+   * @returns {Promise<Array<Object>>} The transactions.
+   */
+  async listTransactions () {
+    return this._readOnly.listTransactions()
+  }
+
+  /**
    * @param {string} hash - The txid.
    * @returns {Promise<Object | null>} The transfer that transaction produced.
    */
