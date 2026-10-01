@@ -297,7 +297,8 @@ export default class Engine {
       status: tx.confirmationTime ? 'Settled' : 'WaitingConfirmations'
     }))
 
-    return this._withConfirmations(shaped).sort((a, b) =>
+    // `_withConfirmations` is async: sort the rows, not the promise they arrive on.
+    return (await this._withConfirmations(shaped)).sort((a, b) =>
       (b.confirmationTime?.timestamp ?? Number.MAX_SAFE_INTEGER) -
       (a.confirmationTime?.timestamp ?? Number.MAX_SAFE_INTEGER))
   }
