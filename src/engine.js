@@ -42,6 +42,17 @@ const initialising = new WeakMap()
 const NO_CACHE = { cache: 'no-store' }
 
 /**
+ * How long one round of confirmation reads is shared. A history screen asks for the full
+ * list, each asset's list and the transaction list back to back; within this window they
+ * share one tip lookup and one status lookup per txid instead of repeating them each time.
+ * Short enough that the next refresh sees a new block.
+ */
+const CHAIN_READ_MS = 5000
+
+/** Status lookups in flight at once. */
+const CHAIN_READ_PARALLEL = 4
+
+/**
  * How many coloured addresses to rotate through looking for a recipient id the proxy does not
  * already hold. Each attempt is one round trip, so this is also a bound on how long the engine
  * is held for one invoice.
@@ -94,6 +105,9 @@ export default class Engine {
 
     /** @private */
     this._transferArgument = null
+
+    /** @private */
+    this._chainReads = null
   }
 
   /** @returns {Object} The rgb-lib wallet. */
@@ -611,6 +625,9 @@ export default class Engine {
 
       await this.wallet.flush()
 
+      // Whatever the chain said before this refresh is older than what it says now.
+      this._chainReads = null
+
       return { ms: Date.now() - started, changed }
     })
   }
@@ -931,8 +948,9 @@ export default class Engine {
   /**
    * Adds a confirmation count to the transfers still waiting on the chain. rgb-lib's
    * transfer carries no such field, so it comes from the indexer: one tip lookup plus one
-   * status lookup per pending txid. A lookup that fails leaves the count undefined, which
-   * beats failing the whole list because the indexer hiccuped.
+   * status lookup per pending txid, shared with every other call in the same
+   * {@link CHAIN_READ_MS} window. A lookup that fails leaves the count undefined, which beats
+   * failing the whole list because the indexer hiccuped.
    *
    * @private
    * @param {Array<Object>} transfers - The transfers.
@@ -944,32 +962,70 @@ export default class Engine {
 
     if (!pending.length) return transfers
 
-    const base = this._config.esploraUrl.replace(/\/+$/, '')
-    const get = (path) => fetch(`${base}${path}`, { ...NO_CACHE, signal: AbortSignal.timeout(8000) })
+    const reads = this._chainReadsNow()
 
     let tip
 
     try {
-      tip = Number(await (await get('/blocks/tip/height')).text())
+      tip = await reads.tip()
     } catch {
       return transfers
     }
 
     if (!Number.isFinite(tip)) return transfers
 
+    const txids = [...new Set(pending.map((t) => t.txid))]
     const depth = new Map()
+    let next = 0
 
-    for (const txid of new Set(pending.map((t) => t.txid))) {
-      try {
-        const status = await (await get(`/tx/${txid}/status`)).json()
+    const worker = async () => {
+      while (next < txids.length) {
+        const txid = txids[next++]
 
-        // Being in a block at the tip is one confirmation, not zero.
-        depth.set(txid, status.confirmed ? Math.max(0, tip - status.block_height + 1) : 0)
-      } catch {
-        // Leave this one unknown.
+        try {
+          const status = await reads.status(txid)
+
+          // Being in a block at the tip is one confirmation, not zero.
+          depth.set(txid, status.confirmed ? Math.max(0, tip - status.block_height + 1) : 0)
+        } catch {
+          // Leave this one unknown.
+        }
       }
     }
 
+    await Promise.all(Array.from({ length: Math.min(CHAIN_READ_PARALLEL, txids.length) }, worker))
+
     return transfers.map((t) => (depth.has(t.txid) ? { ...t, confirmations: depth.get(t.txid) } : t))
+  }
+
+  /**
+   * The indexer reads of the current {@link CHAIN_READ_MS} window. Each read is made at most
+   * once per window and its promise shared, a failed one included: a lookup that just timed
+   * out would only time out again for the next caller.
+   *
+   * @private
+   * @returns {{ tip: function(): Promise<number>, status: function(string): Promise<Object> }} The reads.
+   */
+  _chainReadsNow () {
+    const now = Date.now()
+
+    if (this._chainReads && now - this._chainReads.at < CHAIN_READ_MS) return this._chainReads
+
+    const base = this._config.esploraUrl.replace(/\/+$/, '')
+    const get = (path) => fetch(`${base}${path}`, { ...NO_CACHE, signal: AbortSignal.timeout(8000) })
+    const held = new Map()
+    const once = (key, read) => {
+      if (!held.has(key)) held.set(key, read())
+
+      return held.get(key)
+    }
+
+    this._chainReads = {
+      at: now,
+      tip: () => once('tip', async () => Number(await (await get('/blocks/tip/height')).text())),
+      status: (txid) => once(txid, async () => (await get(`/tx/${txid}/status`)).json())
+    }
+
+    return this._chainReads
   }
 }
