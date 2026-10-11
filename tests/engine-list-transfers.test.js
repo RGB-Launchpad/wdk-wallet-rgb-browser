@@ -26,7 +26,7 @@ const engineWith = (listTransfers) => {
 }
 
 describe('listTransfers across both binding shapes', () => {
-  test('asset-id bindings: no argument gathers every asset, not the assetless ones alone', () => {
+  test('asset-id bindings: no argument gathers every asset, not the assetless ones alone', async () => {
     const engine = engineWith((arg) => {
       if (arg && typeof arg === 'object') throw new Error(`Asset with id ${JSON.stringify(arg)} not found`)
       if (typeof arg === 'string' && arg.startsWith('rgb:') === false) {
@@ -35,32 +35,32 @@ describe('listTransfers across both binding shapes', () => {
       return BY_ASSET[arg] ?? []
     })
 
-    const all = engine._listTransfers()
+    const all = await engine._listTransfers()
 
     expect(all.map((t) => t.batchTransferIdx)).toEqual([1, 2, 3, 4])
   })
 
-  test('asset-id bindings: an asset id restricts to that asset', () => {
+  test('asset-id bindings: an asset id restricts to that asset', async () => {
     const engine = engineWith((arg) => {
       if (typeof arg !== 'string' || !arg.startsWith('rgb:')) throw new Error(`Asset with id ${arg} not found`)
       return BY_ASSET[arg] ?? []
     })
 
-    expect(engine._listTransfers('rgb:two').map((t) => t.txid)).toEqual(['b'])
+    expect((await engine._listTransfers('rgb:two')).map((t) => t.txid)).toEqual(['b'])
   })
 
-  test('filter bindings: "any" is passed straight through', () => {
+  test('filter bindings: "any" is passed straight through', async () => {
     const seen = []
     const engine = engineWith((arg) => {
       seen.push(arg)
       return [{ batchTransferIdx: 9, txid: 'z' }]
     })
 
-    expect(engine._listTransfers().map((t) => t.txid)).toEqual(['z'])
+    expect((await engine._listTransfers()).map((t) => t.txid)).toEqual(['z'])
     expect(seen).toEqual(['any'])
   })
 
-  test('the shape is settled once and not probed again', () => {
+  test('the shape is settled once and not probed again', async () => {
     const seen = []
     const engine = engineWith((arg) => {
       seen.push(arg)
@@ -68,8 +68,8 @@ describe('listTransfers across both binding shapes', () => {
       return BY_ASSET[arg] ?? []
     })
 
-    engine._listTransfers()
-    engine._listTransfers()
+    await engine._listTransfers()
+    await engine._listTransfers()
 
     expect(seen.filter((a) => a === 'any')).toHaveLength(1)
   })

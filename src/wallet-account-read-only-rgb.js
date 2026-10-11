@@ -37,7 +37,7 @@ export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
 
   /** @returns {Promise<string>} The wallet's Bitcoin address. */
   async getAddress () {
-    return this._engine.run(() => this._engine.wallet.getAddress())
+    return this._engine.run(async () => await this._engine.wallet.getAddress())
   }
 
   /**
@@ -61,7 +61,7 @@ export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
    * @returns {Promise<Object>} The balance.
    */
   async getBtcBalance () {
-    return this._engine.run(() => this._engine.plain(this._engine.wallet.getBtcBalance()))
+    return this._engine.run(async () => this._engine.plain(await this._engine.wallet.getBtcBalance()))
   }
 
   /**
@@ -83,8 +83,8 @@ export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
    * @returns {Promise<Object>} The balance.
    */
   async getAssetBalance (assetId) {
-    return this._engine.run(() =>
-      this._engine.plain(this._engine.wallet.getAssetBalance(assetId)))
+    return this._engine.run(async () =>
+      this._engine.plain(await this._engine.wallet.getAssetBalance(assetId)))
   }
 
   /**
@@ -199,9 +199,9 @@ export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
    * @returns {Promise<boolean | null>} True when a backup is due, null when unknown.
    */
   async isBackupNeeded () {
-    return this._engine.run(() => {
+    return this._engine.run(async () => {
       try {
-        return this._engine.wallet.backupInfo()
+        return await this._engine.wallet.backupInfo()
       } catch {
         return null
       }

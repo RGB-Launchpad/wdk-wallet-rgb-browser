@@ -42,6 +42,69 @@ const initialising = new WeakMap()
 const NO_CACHE = { cache: 'no-store' }
 
 /**
+ * What a wallet binding throws while other code on the same wallet instance holds it, such as
+ * a Lightning node built into the same WebAssembly module. Bindings without such a neighbour
+ * never throw it.
+ */
+const WALLET_BUSY = 'RGB wallet is busy with another operation'
+
+/** How long one call keeps retrying a busy wallet, and how often. */
+const BUSY_RETRY_FOR_MS = 60_000
+const BUSY_RETRY_EVERY_MS = 100
+
+const isBusy = (error) => String(error?.message ?? error).includes(WALLET_BUSY)
+
+/**
+ * The wallet, with every method retried while the wallet is busy. Only the one call is
+ * retried, never the task around it: a binding checks for the wallet before doing anything,
+ * so a busy call changed nothing, while re-running a whole task could repeat a step that
+ * already happened (a second `sendBegin`). A call that is not refused returns as it would
+ * unwrapped, synchronously for a synchronous method; a refused one returns a promise, which
+ * is why every call site awaits.
+ *
+ * @param {Object} wallet - The rgb-lib wallet.
+ * @returns {Object} The same wallet behind the retry.
+ */
+export function retryWhenBusy (wallet) {
+  const later = async (method, args) => {
+    const deadline = Date.now() + BUSY_RETRY_FOR_MS
+
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, BUSY_RETRY_EVERY_MS))
+
+      try {
+        return await method.apply(wallet, args)
+      } catch (error) {
+        if (!isBusy(error) || Date.now() > deadline) throw error
+      }
+    }
+  }
+
+  return new Proxy(wallet, {
+    get (target, key) {
+      const value = Reflect.get(target, key)
+
+      if (typeof value !== 'function') return value
+
+      return (...args) => {
+        let result
+
+        try {
+          result = value.apply(target, args)
+        } catch (error) {
+          if (isBusy(error)) return later(value, args)
+          throw error
+        }
+
+        return typeof result?.then === 'function'
+          ? result.catch((error) => (isBusy(error) ? later(value, args) : Promise.reject(error)))
+          : result
+      }
+    }
+  })
+}
+
+/**
  * How long one round of confirmation reads is shared. A history screen asks for the full
  * list, each asset's list and the transaction list back to back; within this window they
  * share one tip lookup and one status lookup per txid instead of repeating them each time.
@@ -203,7 +266,7 @@ export default class Engine {
 
     const keys = restoreKeys(this._config.network, mnemonic)
 
-    this._wallet = await WasmWallet.create(JSON.stringify({
+    this._wallet = retryWhenBusy(await WasmWallet.create(JSON.stringify({
       // The IndexedDB key is `dataDir/<master fingerprint>`. It carries the network by
       // default, because a shared key loads the other chain's snapshot and BDK rejects it.
       dataDir: this._config.dataDir,
@@ -219,7 +282,7 @@ export default class Engine {
       supportedSchemas: this._config.network === 'Mainnet' ? ['Nia'] : ['Nia', 'Ifa'],
       // Pins the address index, so the wallet's address is stable across sessions.
       reuseAddresses: true
-    }))
+    })))
 
     await this._wallet.flush()
 
@@ -257,15 +320,15 @@ export default class Engine {
    * @returns {Promise<Array<Object>>} The assets.
    */
   async listAssets () {
-    return this.run(() => {
-      const list = this.plain(this.wallet.listAssets([]))
+    return this.run(async () => {
+      const list = this.plain(await this.wallet.listAssets([]))
       const out = []
 
       for (const asset of [...(list.nia || []), ...(list.ifa || [])]) {
         let precision = asset.precision ?? null
 
         try {
-          precision = this.plain(this.wallet.getAssetMetadata(asset.assetId)).precision ?? precision
+          precision = this.plain(await this.wallet.getAssetMetadata(asset.assetId)).precision ?? precision
         } catch {
           // The list's own value stands; metadata is an improvement, not a requirement.
         }
@@ -290,8 +353,8 @@ export default class Engine {
    * @returns {Promise<Array<Object>>} The transfers.
    */
   async listTransfers (assetId) {
-    const transfers = await this.run(() =>
-      this.plain(this._listTransfers(assetId)).slice().reverse())
+    const transfers = await this.run(async () =>
+      this.plain(await this._listTransfers(assetId)).slice().reverse())
 
     return this._withConfirmations(transfers)
   }
@@ -305,7 +368,7 @@ export default class Engine {
    * @returns {Promise<Array<Object>>} The transactions.
    */
   async listTransactions () {
-    const txs = await this.run(() => this.plain(this.wallet.listTransactions()))
+    const txs = await this.run(async () => this.plain(await this.wallet.listTransactions()))
     const shaped = txs.map((tx) => ({
       ...tx,
       status: tx.confirmationTime ? 'Settled' : 'WaitingConfirmations'
@@ -323,7 +386,7 @@ export default class Engine {
    * @returns {Promise<number>} How many allocations can still be received.
    */
   async freeSlots () {
-    return this.run(() => freeSlots(this.wallet.listUnspents(false), this._config.slots))
+    return this.run(async () => freeSlots(await this.wallet.listUnspents(false), this._config.slots))
   }
 
   /**
@@ -363,13 +426,13 @@ export default class Engine {
     return this.run(async () => {
       await this.wallet.sync(online)
 
-      const count = slotsToCreate(this.plain(this.wallet.listUnspents(false)), this._config.slots)
+      const count = slotsToCreate(this.plain(await this.wallet.listUnspents(false)), this._config.slots)
 
       if (count === 0) {
-        return { created: 0, slots: freeSlots(this.wallet.listUnspents(false), this._config.slots) }
+        return { created: 0, slots: freeSlots(await this.wallet.listUnspents(false), this._config.slots) }
       }
 
-      const blocked = slotBlocker(this.wallet.getBtcBalance().vanilla, rate, count, this._config.slots)
+      const blocked = slotBlocker(await this.wallet.getBtcBalance().vanilla, rate, count, this._config.slots)
 
       if (blocked) throw new Error(blocked)
 
@@ -377,12 +440,12 @@ export default class Engine {
       // allocation, including ones already holding assets, and creates nothing.
       const psbt = await this.wallet.createUtxosBegin(
         online, false, count, this._config.slots.utxoSizeSat, rate, false)
-      const signed = this.wallet.signPsbt(psbt)
+      const signed = await this.wallet.signPsbt(psbt)
       const created = await this.wallet.createUtxosEnd(online, signed, false)
 
       await this.wallet.flush()
 
-      return { created, slots: freeSlots(this.wallet.listUnspents(false), this._config.slots) }
+      return { created, slots: freeSlots(await this.wallet.listUnspents(false), this._config.slots) }
     })
   }
 
@@ -405,7 +468,7 @@ export default class Engine {
     }
 
     return this.run(async () => {
-      if (freeSlots(this.wallet.listUnspents(false), this._config.slots) < 1) {
+      if (freeSlots(await this.wallet.listUnspents(false), this._config.slots) < 1) {
         throw new Error('No free allocation slot. Create slots before receiving.')
       }
 
@@ -413,7 +476,7 @@ export default class Engine {
 
       try {
         // `undefined` means any asset; the bindings reject null.
-        invoice = this.wallet.blindReceive(
+        invoice = await this.wallet.blindReceive(
           assetId || undefined,
           'Any',
           (minutes || this._config.invoiceMinutes) * 60,
@@ -460,9 +523,9 @@ export default class Engine {
       // chain, only on the proxy. So the proxy is the one asked. Only the coloured keychain
       // rotates; the identity address is on the vanilla one and does not move.
       for (let attempt = 0; attempt < WITNESS_ADDRESS_ATTEMPTS; attempt++) {
-        this.wallet.rotateAddress(0)
+        await this.wallet.rotateAddress(0)
 
-        const invoice = this.plain(this.wallet.witnessReceive(
+        const invoice = this.plain(await this.wallet.witnessReceive(
           assetId || undefined,
           'Any',
           (minutes || this._config.invoiceMinutes) * 60,
@@ -544,14 +607,14 @@ export default class Engine {
     }
 
     return this.run(async () => {
-      if (freeSlots(this.wallet.listUnspents(false), this._config.slots) < amounts.length) {
+      if (freeSlots(await this.wallet.listUnspents(false), this._config.slots) < amounts.length) {
         throw new Error(`Issuing ${amounts.length} allocations needs ${amounts.length} free slots. Create slots first.`)
       }
 
       const values = amounts.map((a) => BigInt(a))
 
       const asset = schema === 'Ifa'
-        ? this.wallet.issueAssetIfa(
+        ? await this.wallet.issueAssetIfa(
           ticker,
           name,
           precision,
@@ -559,7 +622,7 @@ export default class Engine {
           (options.inflationAmounts || []).map((a) => BigInt(a)),
           options.rejectListUrl ?? undefined
         )
-        : this.wallet.issueAssetNia(ticker, name, precision, values)
+        : await this.wallet.issueAssetNia(ticker, name, precision, values)
 
       await this.wallet.flush()
 
@@ -581,9 +644,9 @@ export default class Engine {
     if (typeof message !== 'string' || !message) throw new Error('A message is required.')
 
     return this.run(async () => {
-      const address = this.wallet.getAddress()
+      const address = await this.wallet.getAddress()
       const psbt = await buildToSignPsbt(address, message)
-      const signed = this.wallet.signPsbt(psbt)
+      const signed = await this.wallet.signPsbt(psbt)
 
       return { address, signature: signatureFromWitness(extractWitness(signed)) }
     })
@@ -649,7 +712,7 @@ export default class Engine {
       let deleted = false
 
       try {
-        deleted = this.wallet.deleteTransfers(undefined, true)
+        deleted = await this.wallet.deleteTransfers(undefined, true)
       } catch {
         // Nothing to delete.
       }
@@ -659,7 +722,7 @@ export default class Engine {
       return {
         failed,
         deleted,
-        slots: freeSlots(this.wallet.listUnspents(false), this._config.slots)
+        slots: freeSlots(await this.wallet.listUnspents(false), this._config.slots)
       }
     })
   }
@@ -674,7 +737,7 @@ export default class Engine {
   async backup (password) {
     if (!password) throw new Error('A backup password is required.')
 
-    return this.run(() => this.wallet.backup(password))
+    return this.run(async () => await this.wallet.backup(password))
   }
 
   /**
@@ -688,7 +751,7 @@ export default class Engine {
     if (!bytes?.length) throw new Error('The backup is empty.')
 
     return this.run(async () => {
-      this.wallet.restoreBackup(new Uint8Array(bytes), password)
+      await this.wallet.restoreBackup(new Uint8Array(bytes), password)
 
       await this.wallet.flush()
     })
@@ -784,7 +847,7 @@ export default class Engine {
         throw new Error(explainSendError(error?.message || error, rate))
       }
 
-      const signed = this.wallet.signPsbt(psbt)
+      const signed = await this.wallet.signPsbt(psbt)
       const result = this.plain(await this.wallet.sendEnd(online, signed, false))
 
       await this.wallet.flush()
@@ -833,7 +896,7 @@ export default class Engine {
       await this.wallet.sync(online)
 
       const psbt = await this.wallet.sendBtcBegin(online, String(address).trim(), value, rate, false)
-      const signed = this.wallet.signPsbt(psbt)
+      const signed = await this.wallet.signPsbt(psbt)
       const txid = await this.wallet.sendBtcEnd(online, signed, false)
 
       await this.wallet.flush()
@@ -864,11 +927,11 @@ export default class Engine {
    * @param {string} [assetId] - The asset to restrict to.
    * @returns {Array<Object>} The transfers, as rgb-lib returns them.
    */
-  _listTransfers (assetId) {
+  async _listTransfers (assetId) {
     if (this._transferArgument === 'assetId') return this._listTransfersByAsset(assetId)
 
     try {
-      const transfers = this.wallet.listTransfers(assetId ? { id: assetId } : 'any')
+      const transfers = await this.wallet.listTransfers(assetId ? { id: assetId } : 'any')
 
       this._transferArgument = 'filter'
 
@@ -893,8 +956,8 @@ export default class Engine {
    * @param {string} [assetId] - The asset to restrict to.
    * @returns {Array<Object>} The transfers.
    */
-  _listTransfersByAsset (assetId) {
-    if (assetId) return this.wallet.listTransfers(assetId)
+  async _listTransfersByAsset (assetId) {
+    if (assetId) return await this.wallet.listTransfers(assetId)
 
     const seen = new Set()
     const all = []
@@ -910,13 +973,13 @@ export default class Engine {
       }
     }
 
-    const list = this.wallet.listAssets([])
+    const list = await this.wallet.listAssets([])
 
     for (const asset of [...(list.nia || []), ...(list.ifa || [])]) {
-      add(this.wallet.listTransfers(asset.assetId))
+      add(await this.wallet.listTransfers(asset.assetId))
     }
 
-    add(this.wallet.listTransfers(undefined))
+    add(await this.wallet.listTransfers(undefined))
 
     return all.sort((a, b) => Number(a.batchTransferIdx) - Number(b.batchTransferIdx))
   }
