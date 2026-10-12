@@ -142,16 +142,24 @@ export function slotsToCreate (unspents, slots = SLOTS) {
 }
 
 /**
- * Free allocation slots across the wallet's colored UTXOs.
+ * Free allocation slots across the wallet's colored UTXOs: how many more blinded invoices
+ * rgb-lib will open right now.
+ *
+ * rgb-lib picks a UTXO for a blinded invoice only while its allocations plus the invoices
+ * already open on it stay within one less than the per-UTXO maximum, and never a UTXO that
+ * does not exist yet or waits on a witness receive. Counting the maximum and leaving out the
+ * open invoices reports room that a blinded invoice is then refused.
  *
  * @param {Array<Object>} unspents - The unspents, from `listUnspents`.
  * @param {SlotParameters} slots - The slot parameters.
  * @returns {number} How many allocations can still be received.
  */
 export function freeSlots (unspents, slots = SLOTS) {
+  const room = slots.maxAllocationsPerUtxo - 1
+
   return (unspents || [])
-    .filter((u) => u.utxo?.colorable)
-    .reduce((a, u) => a + Math.max(0, slots.maxAllocationsPerUtxo - u.rgbAllocations.length), 0)
+    .filter((u) => u.utxo?.colorable && u.utxo.exists !== false && !u.utxo.pendingWitness)
+    .reduce((a, u) => a + Math.max(0, room - (u.rgbAllocations || []).length - Number(u.pendingBlinded || 0)), 0)
 }
 
 /**

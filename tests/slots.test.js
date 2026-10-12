@@ -69,12 +69,26 @@ describe('slotsToCreate', () => {
 })
 
 describe('freeSlots', () => {
-  test('counts the room left on every colored UTXO', () => {
+  const room = SLOTS.maxAllocationsPerUtxo - 1
+
+  test('counts the room rgb-lib leaves for blinded invoices on every colored UTXO', () => {
     expect(freeSlots([
       unspent(),
       unspent({ rgbAllocations: [{}, {}] }),
       unspent({ utxo: { colorable: false } })
-    ])).toBe(SLOTS.maxAllocationsPerUtxo + (SLOTS.maxAllocationsPerUtxo - 2))
+    ])).toBe(room + (room - 2))
+  })
+
+  test('takes off the invoices already open on a UTXO', () => {
+    expect(freeSlots([unspent({ rgbAllocations: [{}], pendingBlinded: 3 })])).toBe(0)
+    expect(freeSlots([unspent({ pendingBlinded: 1 })])).toBe(room - 1)
+  })
+
+  test('leaves out UTXOs that do not exist yet or wait on a witness receive', () => {
+    expect(freeSlots([
+      unspent({ utxo: { exists: false } }),
+      unspent({ utxo: { pendingWitness: true } })
+    ])).toBe(0)
   })
 })
 
