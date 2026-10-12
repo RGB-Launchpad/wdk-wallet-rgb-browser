@@ -140,9 +140,10 @@ export default class Engine {
      * Creates the empty colored UTXOs that receiving requires.
      *
      * @param {number | bigint} [feeRate] - The fee rate; estimated when omitted.
+     * @param {number} [num] - How many to create; by default as many as bring the usable empty slots up to the configured number.
      * @returns {Promise<{ created: number, slots: number }>} What was created.
      */
-    createUtxos(feeRate?: number | bigint): Promise<{
+    createUtxos(feeRate?: number | bigint, num?: number): Promise<{
         created: number;
         slots: number;
     }>;
@@ -155,11 +156,15 @@ export default class Engine {
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
      * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
      * @returns {Promise<Object>} The invoice.
      */
-    blindReceive({ assetId, minutes }?: {
+    blindReceive({ assetId, minutes, amount, minConfirmations }?: {
         assetId?: string;
         minutes?: number;
+        amount?: bigint | number | string;
+        minConfirmations?: number;
     }): Promise<any>;
     /**
      * Creates an address to receive an asset through a witness transaction, which needs no
@@ -171,11 +176,15 @@ export default class Engine {
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
      * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
      * @returns {Promise<Object>} The invoice.
      */
-    witnessReceive({ assetId, minutes }?: {
+    witnessReceive({ assetId, minutes, amount, minConfirmations }?: {
         assetId?: string;
         minutes?: number;
+        amount?: bigint | number | string;
+        minConfirmations?: number;
     }): Promise<any>;
     /**
      * Whether the proxy already holds a consignment for this recipient id, which makes the id

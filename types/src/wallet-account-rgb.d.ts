@@ -124,11 +124,15 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
      * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
      * @returns {Promise<Object>} The invoice, its recipient id and its expiry.
      */
     receiveAsset(options?: {
         assetId?: string;
         minutes?: number;
+        amount?: bigint | number | string;
+        minConfirmations?: number;
     }): Promise<any>;
     /**
      * Creates an address to receive an asset through a witness transaction, which needs no
@@ -137,11 +141,15 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
      * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
      * @returns {Promise<Object>} The invoice.
      */
     receiveAssetToWitness(options?: {
         assetId?: string;
         minutes?: number;
+        amount?: bigint | number | string;
+        minConfirmations?: number;
     }): Promise<any>;
     /**
      * Issues a new asset, with the whole supply allocated to this wallet.
@@ -172,9 +180,10 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      * fails, and slots take a confirmed on-chain transaction to make.
      *
      * @param {number | bigint} [feeRate] - The fee rate in sat/vB; estimated when omitted.
+     * @param {number} [num] - How many to create; by default enough to bring the usable empty slots up to the configured number.
      * @returns {Promise<{ created: number, slots: number }>} What was created.
      */
-    createUtxos(feeRate?: number | bigint): Promise<{
+    createUtxos(feeRate?: number | bigint, num?: number): Promise<{
         created: number;
         slots: number;
     }>;

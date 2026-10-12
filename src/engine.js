@@ -132,6 +132,21 @@ const WITNESS_ADDRESS_ATTEMPTS = 10
 const isWitnessRecipient = (recipientId) => /(?:^|:)wvout:/.test(String(recipientId || ''))
 
 /**
+ * What an invoice asks for: any amount, or a fixed one in base units. rgb-lib takes the amount
+ * as a number, so one past 2^53 cannot be asked for exactly and is refused rather than rounded.
+ *
+ * @param {bigint | number | string} [amount] - The amount; any when omitted.
+ * @returns {string | Object} The assignment.
+ */
+function receiveAssignment (amount) {
+  if (amount === undefined || amount === null || amount === '') return 'Any'
+  const value = BigInt(amount)
+  if (value <= 0n) throw new Error('The amount must be greater than 0.')
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('The amount exceeds 2^53 and cannot be put in an invoice exactly.')
+  return { Fungible: Number(value) }
+}
+
+/**
  * The wallet as rgb-lib sees it, plus everything a browser needs around it: one command at
  * a time, the snapshot key the network demands, and the reads that go to the indexer rather
  * than to the engine.
@@ -416,16 +431,19 @@ export default class Engine {
    * Creates the empty colored UTXOs that receiving requires.
    *
    * @param {number | bigint} [feeRate] - The fee rate; estimated when omitted.
+   * @param {number} [num] - How many to create; by default as many as bring the usable empty slots up to the configured number.
    * @returns {Promise<{ created: number, slots: number }>} What was created.
    */
-  async createUtxos (feeRate) {
+  async createUtxos (feeRate, num) {
     const online = this.needOnline()
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
     return this.run(async () => {
       await this.wallet.sync(online)
 
-      const count = slotsToCreate(this.plain(await this.wallet.listUnspents(false)), this._config.slots)
+      const count = num
+        ? Math.max(1, Math.floor(Number(num)))
+        : slotsToCreate(this.plain(await this.wallet.listUnspents(false)), this._config.slots)
 
       if (count === 0) {
         return { created: 0, slots: freeSlots(await this.wallet.listUnspents(false), this._config.slots) }
@@ -457,14 +475,19 @@ export default class Engine {
    * @param {Object} [options] - The invoice.
    * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
    * @param {number} [options.minutes] - How long the invoice stays valid.
+   * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
+   * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
    * @returns {Promise<Object>} The invoice.
    */
-  async blindReceive ({ assetId, minutes } = {}) {
+  async blindReceive ({ assetId, minutes, amount, minConfirmations } = {}) {
     this.needOnline()
 
     if (!this._config.proxyUrl) {
       throw new Error('No proxyUrl is configured. An invoice must name where the consignment goes.')
     }
+
+    const assignment = receiveAssignment(amount)
+    const confirmations = Math.max(this._config.minConfirmations, Number(minConfirmations) || 0)
 
     return this.run(async () => {
       if (freeSlots(await this.wallet.listUnspents(false), this._config.slots) < 1) {
@@ -477,10 +500,10 @@ export default class Engine {
         // `undefined` means any asset; the bindings reject null.
         invoice = await this.wallet.blindReceive(
           assetId || undefined,
-          'Any',
+          assignment,
           (minutes || this._config.invoiceMinutes) * 60,
           [this._config.proxyUrl],
-          this._config.minConfirmations
+          confirmations
         )
       } catch (error) {
         throw new Error(explainReceiveError(error?.message || error))
@@ -502,14 +525,19 @@ export default class Engine {
    * @param {Object} [options] - The invoice.
    * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
    * @param {number} [options.minutes] - How long the invoice stays valid.
+   * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
+   * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
    * @returns {Promise<Object>} The invoice.
    */
-  async witnessReceive ({ assetId, minutes } = {}) {
+  async witnessReceive ({ assetId, minutes, amount, minConfirmations } = {}) {
     this.needOnline()
 
     if (!this._config.proxyUrl) {
       throw new Error('No proxyUrl is configured. An invoice must name where the consignment goes.')
     }
+
+    const assignment = receiveAssignment(amount)
+    const confirmations = Math.max(this._config.minConfirmations, Number(minConfirmations) || 0)
 
     return this.run(async () => {
       // A wallet pins its addresses so its identity stays put, which means a witness invoice
@@ -526,10 +554,10 @@ export default class Engine {
 
         const invoice = this.plain(await this.wallet.witnessReceive(
           assetId || undefined,
-          'Any',
+          assignment,
           (minutes || this._config.invoiceMinutes) * 60,
           [this._config.proxyUrl],
-          this._config.minConfirmations
+          confirmations
         ))
 
         if (!await this._proxyHolds(invoice.recipientId ?? invoice.recipient_id)) {
