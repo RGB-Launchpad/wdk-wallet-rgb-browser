@@ -51,6 +51,7 @@ const COIN_TYPE = { Mainnet: 0 }
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
  * @property {number} [witnessSats] - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
+ * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
  * @property {import('./slots.js').SlotParameters} [slots] - Allocation slot parameters.
  */
@@ -109,6 +110,8 @@ export default class WalletManagerRgb extends WalletManager {
       // rgb-lib's own seal size. The sender pays it, which is the trade a witness invoice
       // makes: the recipient needs no slot of their own.
       witnessSats: config.witnessSats ?? 1000,
+      // rgb-lib refuses to open a mainnet wallet that lists IFA.
+      schemas: config.schemas || (network === 'Mainnet' ? ['Nia'] : ['Nia', 'Ifa']),
       fee,
       slots,
       path: `m/86'/${COIN_TYPE[network] ?? 1}'/0'`

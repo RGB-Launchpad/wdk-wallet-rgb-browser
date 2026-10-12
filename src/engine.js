@@ -278,8 +278,7 @@ export default class Engine {
       mnemonic,
       masterFingerprint: keys.masterFingerprint,
       vanillaKeychain: null,
-      // rgb-lib refuses to open a mainnet wallet that lists IFA.
-      supportedSchemas: this._config.network === 'Mainnet' ? ['Nia'] : ['Nia', 'Ifa'],
+      supportedSchemas: this._config.schemas,
       // Pins the address index, so the wallet's address is stable across sessions.
       reuseAddresses: true
     })))

@@ -14,6 +14,7 @@
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
  * @property {number} [witnessSats] - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
+ * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
  * @property {import('./slots.js').SlotParameters} [slots] - Allocation slot parameters.
  */
@@ -111,6 +112,10 @@ export type RgbWalletConfig = {
      * - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
      */
     witnessSats?: number;
+    /**
+     * - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
+     */
+    schemas?: string[];
     /**
      * - Fee bidding parameters.
      */
