@@ -1,4 +1,16 @@
 /**
+ * The wallet, with every method retried while the wallet is busy. Only the one call is
+ * retried, never the task around it: a binding checks for the wallet before doing anything,
+ * so a busy call changed nothing, while re-running a whole task could repeat a step that
+ * already happened (a second `sendBegin`). A call that is not refused returns as it would
+ * unwrapped, synchronously for a synchronous method; a refused one returns a promise, which
+ * is why every call site awaits.
+ *
+ * @param {Object} wallet - The rgb-lib wallet.
+ * @returns {Object} The same wallet behind the retry.
+ */
+export function retryWhenBusy(wallet: any): any;
+/**
  * The wallet as rgb-lib sees it, plus everything a browser needs around it: one command at
  * a time, the snapshot key the network demands, and the reads that go to the indexer rather
  * than to the engine.
@@ -28,6 +40,8 @@ export default class Engine {
     private _persisted;
     /** @private */
     private _transferArgument;
+    /** @private */
+    private _chainReads;
     /** @returns {Object} The rgb-lib wallet. */
     get wallet(): any;
     /** @returns {string} The derivation path this account reports. */
@@ -269,15 +283,17 @@ export default class Engine {
      * @param {Object} options - The send.
      * @param {string} options.invoice - The RGB invoice.
      * @param {string} [options.assetId] - The asset; taken from the invoice when omitted.
-     * @param {bigint | number | string} options.amount - The amount, in the asset's own precision.
+     * @param {bigint | number | string} [options.amount] - The amount, in the asset's own precision. Not used for a non-fungible asset.
      * @param {number | bigint} [options.feeRate] - The fee rate; estimated when omitted.
+     * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA): the whole of it moves, and rgb-lib takes the assignment as non-fungible rather than an amount.
      * @returns {Promise<Object>} The transfer rgb-lib recorded.
      */
-    sendAsset({ invoice, assetId, amount, feeRate }: {
+    sendAsset({ invoice, assetId, amount, feeRate, nonFungible }: {
         invoice: string;
         assetId?: string;
-        amount: bigint | number | string;
+        amount?: bigint | number | string;
         feeRate?: number | bigint;
+        nonFungible?: boolean;
     }): Promise<any>;
     /**
      * The transfers this wallet has sent that are still waiting on their recipient.
@@ -347,12 +363,22 @@ export default class Engine {
     /**
      * Adds a confirmation count to the transfers still waiting on the chain. rgb-lib's
      * transfer carries no such field, so it comes from the indexer: one tip lookup plus one
-     * status lookup per pending txid. A lookup that fails leaves the count undefined, which
-     * beats failing the whole list because the indexer hiccuped.
+     * status lookup per pending txid, shared with every other call in the same
+     * {@link CHAIN_READ_MS} window. A lookup that fails leaves the count undefined, which beats
+     * failing the whole list because the indexer hiccuped.
      *
      * @private
      * @param {Array<Object>} transfers - The transfers.
      * @returns {Promise<Array<Object>>} The transfers, some with `confirmations`.
      */
     private _withConfirmations;
+    /**
+     * The indexer reads of the current {@link CHAIN_READ_MS} window. Each read is made at most
+     * once per window and its promise shared, a failed one included: a lookup that just timed
+     * out would only time out again for the next caller.
+     *
+     * @private
+     * @returns {{ tip: function(): Promise<number>, status: function(string): Promise<Object> }} The reads.
+     */
+    private _chainReadsNow;
 }

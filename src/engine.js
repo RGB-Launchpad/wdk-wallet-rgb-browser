@@ -772,11 +772,12 @@ export default class Engine {
    * @param {Object} options - The send.
    * @param {string} options.invoice - The RGB invoice.
    * @param {string} [options.assetId] - The asset; taken from the invoice when omitted.
-   * @param {bigint | number | string} options.amount - The amount, in the asset's own precision.
+   * @param {bigint | number | string} [options.amount] - The amount, in the asset's own precision. Not used for a non-fungible asset.
    * @param {number | bigint} [options.feeRate] - The fee rate; estimated when omitted.
+   * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA): the whole of it moves, and rgb-lib takes the assignment as non-fungible rather than an amount.
    * @returns {Promise<Object>} The transfer rgb-lib recorded.
    */
-  async sendAsset ({ invoice, assetId, amount, feeRate }) {
+  async sendAsset ({ invoice, assetId, amount, feeRate, nonFungible = false }) {
     const online = this.needOnline()
     const data = this.plain(new this._bindings.WasmInvoice(String(invoice || '').trim()).invoiceData())
 
@@ -788,7 +789,7 @@ export default class Engine {
       throw new Error('The invoice names a different asset.')
     }
 
-    const value = BigInt(amount)
+    const value = nonFungible ? 1n : BigInt(amount)
 
     if (value <= 0n) throw new Error('The amount must be greater than 0.')
 
@@ -821,7 +822,7 @@ export default class Engine {
         [assetId || data.assetId]: [{
           recipientId: data.recipientId,
           witnessData,
-          assignment: { Fungible: fungible },
+          assignment: nonFungible ? 'NonFungible' : { Fungible: fungible },
           transportEndpoints: endpoints
         }]
       })

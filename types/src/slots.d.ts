@@ -63,7 +63,13 @@ export function usableEmptySlots(unspents: Array<any>, slots?: SlotParameters): 
  */
 export function slotsToCreate(unspents: Array<any>, slots?: SlotParameters): number;
 /**
- * Free allocation slots across the wallet's colored UTXOs.
+ * Free allocation slots across the wallet's colored UTXOs: how many more blinded invoices
+ * rgb-lib will open right now.
+ *
+ * rgb-lib picks a UTXO for a blinded invoice only while its allocations plus the invoices
+ * already open on it stay within one less than the per-UTXO maximum, and never a UTXO that
+ * does not exist yet or waits on a witness receive. Counting the maximum and leaving out the
+ * open invoices reports room that a blinded invoice is then refused.
  *
  * @param {Array<Object>} unspents - The unspents, from `listUnspents`.
  * @param {SlotParameters} slots - The slot parameters.

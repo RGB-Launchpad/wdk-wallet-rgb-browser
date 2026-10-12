@@ -220,8 +220,9 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
    * @param {Object} options - The transfer.
    * @param {string} options.token - The RGB asset id.
    * @param {string} options.recipient - The recipient's RGB invoice.
-   * @param {number | bigint | string} options.amount - The amount, in the asset's base units.
+   * @param {number | bigint | string} [options.amount] - The amount, in the asset's base units. Not used for a non-fungible asset.
    * @param {number | bigint} [options.feeRate] - The fee rate in sat/vB; estimated when omitted.
+   * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA), sent whole.
    * @returns {Promise<{ hash: string, fee: bigint, transfer: Object }>} The result.
    */
   async transfer (options) {
@@ -230,7 +231,8 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
       invoice: options.recipient,
       assetId: options.token,
       amount: options.amount,
-      feeRate
+      feeRate,
+      nonFungible: !!options.nonFungible
     })
 
     return { hash: transfer.txid, fee: feeRate, transfer }
