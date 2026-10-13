@@ -88,3 +88,20 @@ describe('a send that waited too long', () => {
     expect(calls).toEqual([])
   })
 })
+
+describe('a send behind an operation that never ends', () => {
+  test('is answered unsent at notAfter, and never runs afterwards', async () => {
+    const calls = []
+    const engine = engineWith(calls)
+    engine._wallet = { ...engine._wallet, sync: async () => { calls.push('sync') }, sendBtcBegin: async () => { calls.push('begin'); return 'psbt' } }
+    let release
+    engine.run(() => new Promise((resolve) => { release = resolve }))   // holds the queue
+    const t0 = Date.now()
+    await expect(engine.sendBtc({ address: 'tb1q', amount: '1000', feeRate: 2, notAfter: Date.now() + 150 }))
+      .rejects.toThrow(/Nothing was sent/)
+    expect(Date.now() - t0).toBeLessThan(1000)
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(calls).toEqual([])
+  })
+})

@@ -136,6 +136,32 @@ function startBy (notAfter) {
   if (notAfter && Date.now() > notAfter) throw new Error(NOT_SENT_BUSY)
 }
 
+/**
+ * Runs a send in the queue, answering NOT_SENT_BUSY at `notAfter` if it has not started by then,
+ * whether or not the queue ever frees: an operation that never lets go of the wallet would
+ * otherwise keep the caller waiting forever. The send itself still refuses to start late
+ * (`startBy`), so the answer stays true once the queue moves.
+ *
+ * @template T
+ * @param {Engine} engine - The engine.
+ * @param {number} [notAfter] - The last moment the send may start.
+ * @param {() => Promise<T>} task - The send.
+ * @returns {Promise<T>} What the send returned.
+ */
+function runSend (engine, notAfter, task) {
+  let started = false
+  const queued = engine.run(async () => {
+    startBy(notAfter)
+    started = true
+    return task()
+  })
+  if (!notAfter) return queued
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { if (!started) reject(new Error(NOT_SENT_BUSY)) }, Math.max(0, notAfter - Date.now()) + 50)
+    queued.then((v) => { clearTimeout(timer); resolve(v) }, (e) => { clearTimeout(timer); reject(e) })
+  })
+}
+
 /** The most consignment endpoints rgb-lib writes into one invoice. */
 const MAX_TRANSPORT_ENDPOINTS = 3
 
@@ -878,8 +904,7 @@ export default class Engine {
 
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
-    return this.run(async () => {
-      startBy(notAfter)
+    return runSend(this, notAfter, async () => {
       await this.wallet.sync(online)
 
       // A witness recipient has no UTXO yet: the transfer creates the output the asset lands
@@ -969,8 +994,7 @@ export default class Engine {
 
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
-    return this.run(async () => {
-      startBy(notAfter)
+    return runSend(this, notAfter, async () => {
       await this.wallet.sync(online)
 
       const psbt = await this.wallet.sendBtcBegin(online, String(address).trim(), value, rate, false)
