@@ -122,6 +122,9 @@ const CHAIN_READ_PARALLEL = 4
  */
 const WITNESS_ADDRESS_ATTEMPTS = 10
 
+/** The most consignment endpoints rgb-lib writes into one invoice. */
+const MAX_TRANSPORT_ENDPOINTS = 3
+
 /**
  * Whether a recipient id names an output of the sender's transaction rather than a blinded
  * UTXO of the recipient's. rgb-lib encodes it in the id: `wvout` against `utxob`.
@@ -502,7 +505,7 @@ export default class Engine {
           assetId || undefined,
           assignment,
           (minutes || this._config.invoiceMinutes) * 60,
-          [this._config.proxyUrl],
+          this._proxyUrls(),
           confirmations
         )
       } catch (error) {
@@ -556,7 +559,7 @@ export default class Engine {
           assetId || undefined,
           assignment,
           (minutes || this._config.invoiceMinutes) * 60,
-          [this._config.proxyUrl],
+          this._proxyUrls(),
           confirmations
         ))
 
@@ -580,7 +583,37 @@ export default class Engine {
    * @returns {Promise<boolean>} True when the id is taken.
    */
   async _proxyHolds (recipientId) {
-    const url = String(this._config.proxyUrl)
+    // An id held by any proxy the invoice names is taken. Only the main proxy has to answer:
+    // a fallback that cannot be reached holds nothing a sender could have delivered there.
+    const [main, ...fallbacks] = this._proxyUrls()
+    for (const url of fallbacks) {
+      if (await this._proxyHoldsAt(url, recipientId).catch(() => false)) return true
+    }
+    return this._proxyHoldsAt(main, recipientId)
+  }
+
+  /**
+   * The proxies an invoice names, in the order a sender tries them: the configured one, then the
+   * fallbacks, without repeats and no more than rgb-lib accepts.
+   *
+   * @private
+   * @returns {string[]} The endpoints.
+   */
+  _proxyUrls () {
+    const all = [this._config.proxyUrl, ...(this._config.fallbackProxyUrls || [])].filter(Boolean)
+    return [...new Set(all)].slice(0, MAX_TRANSPORT_ENDPOINTS)
+  }
+
+  /**
+   * Whether one proxy holds a consignment for this recipient id.
+   *
+   * @private
+   * @param {string} proxyUrl - The proxy.
+   * @param {string} recipientId - The recipient id.
+   * @returns {Promise<boolean>} True when the id is taken there.
+   */
+  async _proxyHoldsAt (proxyUrl, recipientId) {
+    const url = String(proxyUrl)
       .replace(/^rpcs:\/\//, 'https://')
       .replace(/^rpc:\/\//, 'http://')
 

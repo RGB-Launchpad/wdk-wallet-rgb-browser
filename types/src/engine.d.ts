@@ -196,6 +196,23 @@ export default class Engine {
      */
     private _proxyHolds;
     /**
+     * The proxies an invoice names, in the order a sender tries them: the configured one, then the
+     * fallbacks, without repeats and no more than rgb-lib accepts.
+     *
+     * @private
+     * @returns {string[]} The endpoints.
+     */
+    private _proxyUrls;
+    /**
+     * Whether one proxy holds a consignment for this recipient id.
+     *
+     * @private
+     * @param {string} proxyUrl - The proxy.
+     * @param {string} recipientId - The recipient id.
+     * @returns {Promise<boolean>} True when the id is taken there.
+     */
+    private _proxyHoldsAt;
+    /**
      * Issues a new asset. The whole supply is allocated to this wallet, spread over the
      * amounts given, and each amount takes an allocation slot.
      *

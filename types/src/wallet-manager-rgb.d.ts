@@ -10,6 +10,7 @@
  * @property {string} [esploraUrl] - The Esplora indexer. Defaults to mempool.space's public endpoint for the network; required on Regtest.
  * @property {string} [dataDir] - Where the wallet's IndexedDB snapshot is keyed. Defaults to one derived from the network.
  * @property {string} [proxyUrl] - The RGB proxy that carries consignments. Required to receive or to send.
+ * @property {string[]} [fallbackProxyUrls] - Further proxies an invoice names after `proxyUrl`, which a sender tries when the first cannot be reached. At most three proxies in all are written into an invoice.
  * @property {Object} [bindings] - The rgb-lib WebAssembly bindings module. Defaults to `@utexo/rgb-lib-wasm`, imported on demand.
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
@@ -96,6 +97,10 @@ export type RgbWalletConfig = {
      * - The RGB proxy that carries consignments. Required to receive or to send.
      */
     proxyUrl?: string;
+    /**
+     * - Further proxies an invoice names after `proxyUrl`, which a sender tries when the first cannot be reached. At most three proxies in all are written into an invoice.
+     */
+    fallbackProxyUrls?: string[];
     /**
      * - The rgb-lib WebAssembly bindings module. Defaults to `@utexo/rgb-lib-wasm`, imported on demand.
      */

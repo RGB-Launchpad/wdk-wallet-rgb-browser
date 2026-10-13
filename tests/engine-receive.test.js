@@ -47,3 +47,29 @@ describe('blindReceive', () => {
     await expect(engineWith([]).blindReceive({ amount: '9007199254740993' })).rejects.toThrow(/2\^53/)
   })
 })
+
+describe('fallback proxies', () => {
+  const withProxies = (calls, fallbackProxyUrls) => {
+    const engine = engineWith(calls)
+    engine._config = { ...engine._config, fallbackProxyUrls }
+    return engine
+  }
+
+  test('an invoice names the configured proxy first, then the fallbacks', async () => {
+    const calls = []
+    await withProxies(calls, ['rpcs://backup/0.2/json-rpc']).blindReceive()
+    expect(calls[0][3]).toEqual(['rpc://proxy/json-rpc', 'rpcs://backup/0.2/json-rpc'])
+  })
+
+  test('repeats are dropped and no more than three are written', async () => {
+    const calls = []
+    await withProxies(calls, ['rpc://proxy/json-rpc', 'rpcs://a', 'rpcs://b', 'rpcs://c']).blindReceive()
+    expect(calls[0][3]).toEqual(['rpc://proxy/json-rpc', 'rpcs://a', 'rpcs://b'])
+  })
+
+  test('without fallbacks the invoice names the configured proxy alone', async () => {
+    const calls = []
+    await engineWith(calls).blindReceive()
+    expect(calls[0][3]).toEqual(['rpc://proxy/json-rpc'])
+  })
+})
