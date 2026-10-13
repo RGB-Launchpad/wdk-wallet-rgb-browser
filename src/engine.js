@@ -122,6 +122,20 @@ const CHAIN_READ_PARALLEL = 4
  */
 const WITNESS_ADDRESS_ATTEMPTS = 10
 
+/** What a send that waited past its `notAfter` answers. Nothing was built or signed. */
+const NOT_SENT_BUSY = 'The wallet was busy with another operation and this send did not start. Nothing was sent; try again.'
+
+/**
+ * Refuses a send whose turn in the queue came after `notAfter` (ms since the epoch). A caller
+ * that stops waiting gives up on the send; one that still ran after that would move funds the
+ * caller had already reported as not sent.
+ *
+ * @param {number} [notAfter] - The last moment the send may start.
+ */
+function startBy (notAfter) {
+  if (notAfter && Date.now() > notAfter) throw new Error(NOT_SENT_BUSY)
+}
+
 /** The most consignment endpoints rgb-lib writes into one invoice. */
 const MAX_TRANSPORT_ENDPOINTS = 3
 
@@ -838,7 +852,7 @@ export default class Engine {
    * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA): the whole of it moves, and rgb-lib takes the assignment as non-fungible rather than an amount.
    * @returns {Promise<Object>} The transfer rgb-lib recorded.
    */
-  async sendAsset ({ invoice, assetId, amount, feeRate, nonFungible = false }) {
+  async sendAsset ({ invoice, assetId, amount, feeRate, nonFungible = false, notAfter }) {
     const online = this.needOnline()
     const data = this.plain(new this._bindings.WasmInvoice(String(invoice || '').trim()).invoiceData())
 
@@ -865,6 +879,7 @@ export default class Engine {
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
     return this.run(async () => {
+      startBy(notAfter)
       await this.wallet.sync(online)
 
       // A witness recipient has no UTXO yet: the transfer creates the output the asset lands
@@ -943,9 +958,10 @@ export default class Engine {
    * @param {string} options.address - The destination address.
    * @param {bigint | number | string} options.amount - The amount in sats.
    * @param {number | bigint} [options.feeRate] - The fee rate; estimated when omitted.
+   * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it the send is refused unsent.
    * @returns {Promise<{ txid: string }>} The transaction id.
    */
-  async sendBtc ({ address, amount, feeRate }) {
+  async sendBtc ({ address, amount, feeRate, notAfter }) {
     const online = this.needOnline()
     const value = BigInt(amount)
 
@@ -954,6 +970,7 @@ export default class Engine {
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
     return this.run(async () => {
+      startBy(notAfter)
       await this.wallet.sync(online)
 
       const psbt = await this.wallet.sendBtcBegin(online, String(address).trim(), value, rate, false)

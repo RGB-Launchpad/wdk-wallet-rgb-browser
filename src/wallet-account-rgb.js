@@ -191,6 +191,7 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
    * @param {string} tx.to - The destination address.
    * @param {number | bigint | string} tx.value - The amount in sats.
    * @param {number | bigint} [tx.feeRate] - The fee rate in sat/vB; estimated when omitted.
+   * @param {number} [tx.notAfter] - The last moment (ms since the epoch) the send may start while other operations hold the wallet; past it nothing is sent and the call throws.
    * @returns {Promise<{ hash: string, fee: bigint }>} The transaction id and the rate it paid.
    */
   async sendTransaction (tx) {
@@ -198,7 +199,8 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
     const { txid } = await this._engine.sendBtc({
       address: tx.to,
       amount: tx.value,
-      feeRate
+      feeRate,
+      notAfter: tx.notAfter
     })
 
     return { hash: txid, fee: feeRate }
@@ -223,6 +225,7 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
    * @param {number | bigint | string} [options.amount] - The amount, in the asset's base units. Not used for a non-fungible asset.
    * @param {number | bigint} [options.feeRate] - The fee rate in sat/vB; estimated when omitted.
    * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA), sent whole.
+   * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start while other operations hold the wallet; past it nothing is sent and the call throws.
    * @returns {Promise<{ hash: string, fee: bigint, transfer: Object }>} The result.
    */
   async transfer (options) {
@@ -232,7 +235,8 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
       assetId: options.token,
       amount: options.amount,
       feeRate,
-      nonFungible: !!options.nonFungible
+      nonFungible: !!options.nonFungible,
+      notAfter: options.notAfter
     })
 
     return { hash: transfer.txid, fee: feeRate, transfer }

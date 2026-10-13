@@ -73,3 +73,18 @@ describe('fallback proxies', () => {
     expect(calls[0][3]).toEqual(['rpc://proxy/json-rpc'])
   })
 })
+
+describe('a send that waited too long', () => {
+  const busyEngine = (calls) => {
+    const engine = engineWith(calls)
+    engine._wallet = { ...engine._wallet, sync: async () => { calls.push('sync') }, sendBtcBegin: async () => { calls.push('begin'); return 'psbt' } }
+    return engine
+  }
+
+  test('is refused unsent when its turn comes after notAfter', async () => {
+    const calls = []
+    await expect(busyEngine(calls).sendBtc({ address: 'tb1q', amount: '1000', feeRate: 2, notAfter: Date.now() - 1 }))
+      .rejects.toThrow(/Nothing was sent/)
+    expect(calls).toEqual([])
+  })
+})

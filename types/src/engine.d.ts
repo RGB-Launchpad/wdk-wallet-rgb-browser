@@ -314,7 +314,7 @@ export default class Engine {
      * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA): the whole of it moves, and rgb-lib takes the assignment as non-fungible rather than an amount.
      * @returns {Promise<Object>} The transfer rgb-lib recorded.
      */
-    sendAsset({ invoice, assetId, amount, feeRate, nonFungible }: {
+    sendAsset({ invoice, assetId, amount, feeRate, nonFungible, notAfter }: {
         invoice: string;
         assetId?: string;
         amount?: bigint | number | string;
@@ -342,12 +342,14 @@ export default class Engine {
      * @param {string} options.address - The destination address.
      * @param {bigint | number | string} options.amount - The amount in sats.
      * @param {number | bigint} [options.feeRate] - The fee rate; estimated when omitted.
+     * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it the send is refused unsent.
      * @returns {Promise<{ txid: string }>} The transaction id.
      */
-    sendBtc({ address, amount, feeRate }: {
+    sendBtc({ address, amount, feeRate, notAfter }: {
         address: string;
         amount: bigint | number | string;
         feeRate?: number | bigint;
+        notAfter?: number;
     }): Promise<{
         txid: string;
     }>;
