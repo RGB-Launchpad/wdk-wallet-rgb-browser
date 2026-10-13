@@ -367,16 +367,20 @@ export default class Engine {
   async goOnline (esploraUrl = this._config.esploraUrl) {
     if (!this._wallet) throw new Error('The wallet is not open.')
 
-    try {
-      this._online = await this._wallet.goOnline(true, esploraUrl)
-      this._onlineError = null
-      this._esploraUrl = esploraUrl
-    } catch (error) {
-      this._online = null
-      this._onlineError = String(error?.message || error)
-    }
+    // Queued: the call holds the wallet until the indexer answers, and anything else that
+    // holds the wallet meanwhile — a Lightning node attaching to it — would find it busy.
+    return this.run(async () => {
+      try {
+        this._online = await this._wallet.goOnline(true, esploraUrl)
+        this._onlineError = null
+        this._esploraUrl = esploraUrl
+      } catch (error) {
+        this._online = null
+        this._onlineError = String(error?.message || error)
+      }
 
-    return !!this._online
+      return !!this._online
+    })
   }
 
   /**
@@ -528,7 +532,9 @@ export default class Engine {
     }
 
     try {
-      signals.push(Number(await this.wallet.getFeeEstimation(this.needOnline(), 1)))
+      // Queued: the estimate is a network read that holds the wallet while it waits.
+      const online = this.needOnline()
+      signals.push(Number(await this.run(() => this.wallet.getFeeEstimation(online, 1))))
     } catch {
       // A fresh chain has no estimate to give.
     }
