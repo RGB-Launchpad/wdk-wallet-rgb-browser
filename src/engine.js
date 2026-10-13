@@ -345,6 +345,20 @@ export default class Engine {
 
     this._persisted = await this._requestPersistence()
 
+    // A consumer that opens the wallet on its snapshot alone reaches the indexer later, with
+    // `goOnline`, so the opening never waits on the network.
+    if (!this._config.deferOnline) await this.goOnline()
+  }
+
+  /**
+   * Reaches the indexer, or tries again after a failure. Every online command needs this to
+   * have succeeded once; a wallet opened with `deferOnline` calls it when it is ready to wait.
+   *
+   * @returns {Promise<boolean>} Whether the indexer answered.
+   */
+  async goOnline () {
+    if (!this._wallet) throw new Error('The wallet is not open.')
+
     try {
       this._online = await this._wallet.goOnline(true, this._config.esploraUrl)
       this._onlineError = null
@@ -352,6 +366,8 @@ export default class Engine {
       this._online = null
       this._onlineError = String(error?.message || error)
     }
+
+    return !!this._online
   }
 
   /**

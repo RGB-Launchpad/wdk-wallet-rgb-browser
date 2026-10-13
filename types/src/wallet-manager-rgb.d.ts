@@ -121,6 +121,8 @@ export type RgbWalletConfig = {
      * - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
      */
     schemas?: string[];
+    /** Open on the snapshot alone and reach the indexer later with the account's `goOnline`. */
+    deferOnline?: boolean;
     /**
      * - Fee bidding parameters.
      */

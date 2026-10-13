@@ -216,6 +216,8 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      * @returns {Promise<void>} When the wallet is in step with the chain.
      */
     sync(): Promise<void>;
+    /** Reaches the indexer, for a wallet opened with `deferOnline`, or again after a failure. */
+    goOnline(): Promise<boolean>;
     /**
      * Picks up consignments and advances the transfers waiting on them. This is the step that
      * turns a transfer someone sent into an asset this wallet holds.

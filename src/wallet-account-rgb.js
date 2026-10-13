@@ -360,6 +360,16 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
   }
 
   /**
+   * Reaches the indexer, for a wallet opened with `deferOnline`, or again after the indexer
+   * could not be reached. Not queued: nothing else runs before the wallet is online.
+   *
+   * @returns {Promise<boolean>} Whether the indexer answered.
+   */
+  async goOnline () {
+    return this._engine.goOnline()
+  }
+
+  /**
    * Picks up consignments and advances the transfers waiting on them. This is the step that
    * turns a transfer someone sent into an asset this wallet holds.
    *
