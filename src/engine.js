@@ -458,6 +458,11 @@ export default class Engine {
           transfers.push({ ...transfer, assetId: asset.assetId })
         }
       }
+      // An invoice for any asset leaves a transfer with no asset until its consignment arrives;
+      // it is pending all the same, and the screens list it with the rest.
+      for (const transfer of this.plain(await this._listTransfersNoAsset()) || []) {
+        transfers.push({ ...transfer, assetId: null })
+      }
       const transactions = (this.plain(await this.wallet.listTransactions()) || []).map((tx) => ({
         ...tx,
         status: tx.confirmationTime ? 'Settled' : 'WaitingConfirmations'
@@ -1105,6 +1110,31 @@ export default class Engine {
       this._transferArgument = 'assetId'
 
       return this._listTransfersByAsset(assetId)
+    }
+  }
+
+  /**
+   * The transfers that belong to no asset: invoices for any asset whose consignment has not
+   * arrived. In both argument forms this is the listing with no asset named.
+   *
+   * @private
+   * @returns {Array<Object>} The transfers.
+   */
+  async _listTransfersNoAsset () {
+    if (this._transferArgument === 'assetId') return await this.wallet.listTransfers(undefined)
+
+    try {
+      const transfers = await this.wallet.listTransfers('noAsset')
+
+      this._transferArgument = 'filter'
+
+      return transfers
+    } catch (error) {
+      if (this._transferArgument === 'filter') throw error
+
+      this._transferArgument = 'assetId'
+
+      return await this.wallet.listTransfers(undefined)
     }
   }
 
