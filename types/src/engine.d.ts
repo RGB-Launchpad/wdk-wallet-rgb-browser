@@ -116,6 +116,27 @@ export default class Engine {
      */
     listTransfers(assetId?: string): Promise<Array<any>>;
     /**
+     * Everything the wallet's activity is made of, read from its own records in one turn of the
+     * queue and without asking the network: the assets, each asset's transfers (tagged with its
+     * id), and the wallet's own Bitcoin transactions. Confirmation counts are not here; see
+     * {@link confirmations}, which asks the indexer and does not hold the wallet.
+     *
+     * @returns {Promise<{ assets: Object, transfers: Array<Object>, transactions: Array<Object> }>} The records.
+     */
+    activity(): Promise<{
+        assets: any;
+        transfers: Array<any>;
+        transactions: Array<any>;
+    }>;
+    /**
+     * The rows given, with a confirmation count on those still waiting, read from the indexer.
+     * Does not hold the wallet.
+     *
+     * @param {Array<Object>} rows - Transfers or transactions carrying a `txid`.
+     * @returns {Promise<Array<Object>>} The same rows.
+     */
+    confirmations(rows: Array<any>): Promise<Array<any>>;
+    /**
      * The wallet's own transactions, newest first: plain Bitcoin sends and receives, slot
      * housekeeping, and the transactions RGB sends anchored. Amounts in sats. Unconfirmed ones
      * carry a `confirmations` count; a confirmed one reports `Settled`, since one confirmation

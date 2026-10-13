@@ -59,6 +59,24 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      */
     verify(): Promise<boolean>;
     /**
+     * The wallet's activity from its own records, in one read that does not ask the network:
+     * assets, each asset's transfers tagged with its id, and the Bitcoin transactions.
+     *
+     * @returns {Promise<{ assets: Object, transfers: Array<Object>, transactions: Array<Object> }>} The records.
+     */
+    activity(): Promise<{
+        assets: any;
+        transfers: Array<any>;
+        transactions: Array<any>;
+    }>;
+    /**
+     * Confirmation counts for rows still waiting, from the indexer; does not hold the wallet.
+     *
+     * @param {Array<Object>} rows - Transfers or transactions carrying a `txid`.
+     * @returns {Promise<Array<Object>>} The same rows.
+     */
+    confirmations(rows: Array<any>): Promise<Array<any>>;
+    /**
      * Sends plain Bitcoin. Spends the vanilla keychain only, never a UTXO carrying an asset.
      *
      * @param {Object} tx - The transaction.

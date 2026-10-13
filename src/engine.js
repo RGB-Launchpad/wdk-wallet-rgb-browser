@@ -417,6 +417,42 @@ export default class Engine {
   }
 
   /**
+   * Everything the wallet's activity is made of, read from its own records in one turn of the
+   * queue and without asking the network: the assets, each asset's transfers (tagged with its
+   * id), and the wallet's own Bitcoin transactions. Confirmation counts are not here; see
+   * {@link confirmations}, which asks the indexer and does not hold the wallet.
+   *
+   * @returns {Promise<{ assets: Object, transfers: Array<Object>, transactions: Array<Object> }>} The records.
+   */
+  async activity () {
+    return this.run(async () => {
+      const assets = this.plain(await this.wallet.listAssets([])) || {}
+      const transfers = []
+      for (const asset of [...(assets.nia || []), ...(assets.ifa || []), ...(assets.uda || []), ...(assets.cfa || [])]) {
+        for (const transfer of this.plain(await this._listTransfers(asset.assetId)) || []) {
+          transfers.push({ ...transfer, assetId: asset.assetId })
+        }
+      }
+      const transactions = (this.plain(await this.wallet.listTransactions()) || []).map((tx) => ({
+        ...tx,
+        status: tx.confirmationTime ? 'Settled' : 'WaitingConfirmations'
+      }))
+      return { assets, transfers, transactions }
+    })
+  }
+
+  /**
+   * The rows given, with a confirmation count on those still waiting, read from the indexer.
+   * Does not hold the wallet.
+   *
+   * @param {Array<Object>} rows - Transfers or transactions carrying a `txid`.
+   * @returns {Promise<Array<Object>>} The same rows.
+   */
+  async confirmations (rows) {
+    return this._withConfirmations(rows)
+  }
+
+  /**
    * The wallet's own transactions, newest first: plain Bitcoin sends and receives, slot
    * housekeeping, and the transactions RGB sends anchored. Amounts in sats. Unconfirmed ones
    * carry a `confirmations` count; a confirmed one reports `Settled`, since one confirmation

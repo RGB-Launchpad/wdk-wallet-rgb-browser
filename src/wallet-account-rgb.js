@@ -141,6 +141,26 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
   }
 
   /**
+   * The wallet's activity from its own records, in one read that does not ask the network:
+   * assets, each asset's transfers tagged with its id, and the Bitcoin transactions.
+   *
+   * @returns {Promise<{ assets: Object, transfers: Array<Object>, transactions: Array<Object> }>} The records.
+   */
+  async activity () {
+    return this._engine.activity()
+  }
+
+  /**
+   * Confirmation counts for rows still waiting, from the indexer; does not hold the wallet.
+   *
+   * @param {Array<Object>} rows - Transfers or transactions carrying a `txid`.
+   * @returns {Promise<Array<Object>>} The same rows.
+   */
+  async confirmations (rows) {
+    return this._engine.confirmations(rows)
+  }
+
+  /**
    * The wallet's own transactions, newest first: plain Bitcoin sends and receives included.
    *
    * @returns {Promise<Array<Object>>} The transactions.

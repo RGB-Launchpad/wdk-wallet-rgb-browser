@@ -105,3 +105,21 @@ describe('a send behind an operation that never ends', () => {
     expect(calls).toEqual([])
   })
 })
+
+describe('activity', () => {
+  test('one read: assets, each transfer tagged with its asset, transactions with a status, no indexer', async () => {
+    const calls = []
+    const engine = engineWith(calls)
+    engine._transferArgument = 'assetId'
+    engine._wallet = {
+      ...engine._wallet,
+      listAssets: () => ({ nia: [{ assetId: 'rgb:a' }], uda: [{ assetId: 'rgb:u' }] }),
+      listTransfers: (id) => (id === 'rgb:a' ? [{ idx: 1, kind: 'Send' }] : id === 'rgb:u' ? [{ idx: 2, kind: 'ReceiveBlind' }] : []),
+      listTransactions: () => [{ txid: 't1', confirmationTime: { timestamp: 1 } }, { txid: 't2', confirmationTime: null }]
+    }
+    engine._chainReadsNow = () => { throw new Error('the indexer must not be asked') }
+    const a = await engine.activity()
+    expect(a.transfers).toEqual([{ idx: 1, kind: 'Send', assetId: 'rgb:a' }, { idx: 2, kind: 'ReceiveBlind', assetId: 'rgb:u' }])
+    expect(a.transactions.map((t) => t.status)).toEqual(['Settled', 'WaitingConfirmations'])
+  })
+})
