@@ -365,8 +365,8 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
    *
    * @returns {Promise<boolean>} Whether the indexer answered.
    */
-  async goOnline () {
-    return this._engine.goOnline()
+  async goOnline (esploraUrl) {
+    return this._engine.goOnline(esploraUrl)
   }
 
   /**

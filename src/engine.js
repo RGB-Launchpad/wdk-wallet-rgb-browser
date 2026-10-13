@@ -353,15 +353,24 @@ export default class Engine {
   /**
    * Reaches the indexer, or tries again after a failure. Every online command needs this to
    * have succeeded once; a wallet opened with `deferOnline` calls it when it is ready to wait.
+   * `esploraUrl` names another indexer than the configured one, for a consumer that falls
+   * back to a second server; the one that answered is the one the wallet then uses.
    *
+   * @param {string} [esploraUrl] - The indexer to reach. Defaults to the configured one.
    * @returns {Promise<boolean>} Whether the indexer answered.
    */
-  async goOnline () {
+  /** The indexer in use: the one that answered `goOnline`, else the configured one. */
+  get esploraUrl () {
+    return this._esploraUrl || this._config.esploraUrl
+  }
+
+  async goOnline (esploraUrl = this._config.esploraUrl) {
     if (!this._wallet) throw new Error('The wallet is not open.')
 
     try {
-      this._online = await this._wallet.goOnline(true, this._config.esploraUrl)
+      this._online = await this._wallet.goOnline(true, esploraUrl)
       this._onlineError = null
+      this._esploraUrl = esploraUrl
     } catch (error) {
       this._online = null
       this._onlineError = String(error?.message || error)
@@ -1155,7 +1164,7 @@ export default class Engine {
    * @returns {Promise<Array<[number, number]>>} The mempool histogram.
    */
   async _mempoolHistogram () {
-    const response = await fetch(`${this._config.esploraUrl.replace(/\/+$/, '')}/mempool`, NO_CACHE)
+    const response = await fetch(`${this.esploraUrl.replace(/\/+$/, '')}/mempool`, NO_CACHE)
 
     if (!response.ok) throw new Error(`mempool ${response.status}`)
 
@@ -1228,7 +1237,7 @@ export default class Engine {
 
     if (this._chainReads && now - this._chainReads.at < CHAIN_READ_MS) return this._chainReads
 
-    const base = this._config.esploraUrl.replace(/\/+$/, '')
+    const base = this.esploraUrl.replace(/\/+$/, '')
     const get = (path) => fetch(`${base}${path}`, { ...NO_CACHE, signal: AbortSignal.timeout(8000) })
     const held = new Map()
     const once = (key, read) => {
