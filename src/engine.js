@@ -573,7 +573,9 @@ export default class Engine {
       const psbt = await this.wallet.createUtxosBegin(
         online, false, count, this._config.slots.utxoSizeSat, rate, false)
       const signed = await this.wallet.signPsbt(psbt)
-      const created = await this.wallet.createUtxosEnd(online, signed, false)
+      // No sync after the broadcast: a sync that fails would report as failed a transaction
+      // already on its way, and a retry would pay for it twice. The next sync picks it up.
+      const created = await this.wallet.createUtxosEnd(online, signed, true)
 
       await this.wallet.flush()
 
@@ -1071,7 +1073,9 @@ export default class Engine {
 
       const psbt = await this.wallet.sendBtcBegin(online, String(address).trim(), value, rate, false)
       const signed = await this.wallet.signPsbt(psbt)
-      const txid = await this.wallet.sendBtcEnd(online, signed, false)
+      // No sync after the broadcast, as for slots: a failed sync must not turn a sent
+      // transaction into a reported failure.
+      const txid = await this.wallet.sendBtcEnd(online, signed, true)
 
       await this.wallet.flush()
 
