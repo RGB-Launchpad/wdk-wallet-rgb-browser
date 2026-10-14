@@ -575,11 +575,13 @@ export default class Engine {
       const signed = await this.wallet.signPsbt(psbt)
       // No sync after the broadcast: a sync that fails would report as failed a transaction
       // already on its way, and a retry would pay for it twice. The next sync picks it up.
-      const created = await this.wallet.createUtxosEnd(online, signed, true)
+      // rgb-lib counts what it created by that sync, so the count is the one asked for: the
+      // transaction carries exactly that many.
+      await this.wallet.createUtxosEnd(online, signed, true)
 
       await this.wallet.flush()
 
-      return { created, slots: freeSlots(await this.wallet.listUnspents(false), this._config.slots) }
+      return { created: count, slots: freeSlots(await this.wallet.listUnspents(false), this._config.slots) }
     })
   }
 
