@@ -7,6 +7,8 @@
   address: the wallet then never spends what sits there, keeps its own snapshot, and still
   signs messages as that address through a second, offline wallet on the default chain.
 - `getIdentityAddress()` on the account: the address messages are signed as.
+- `queue`: a host that already runs every use of the wallet one at a time hands in its own
+  queue, and the module's arrival-order queue steps aside.
 
 ## 0.1.1 - 2026-09-26
 

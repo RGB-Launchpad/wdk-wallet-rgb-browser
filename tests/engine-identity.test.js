@@ -69,3 +69,16 @@ describe('vanillaKeychain', () => {
     expect(() => new WalletManagerRgb(PHRASE, { network: 'Regtest', esploraUrl: 'http://x', vanillaKeychain: 1.5 })).toThrow(RangeError)
   })
 })
+
+describe('queue', () => {
+  test('a host queue runs every command instead of the module\'s own', async () => {
+    const created = []
+    const ran = []
+    const queue = (task) => { ran.push('host'); return task() }
+    const engine = new Engine(bindings(created), { network: 'Regtest', dataDir: ':memory:/Regtest', slots: SLOTS, fee: {}, deferOnline: true, queue })
+    engine._requestPersistence = async () => false
+    await engine.open(PHRASE)
+    await engine.identityAddress()
+    expect(ran).toEqual(['host'])
+  })
+})

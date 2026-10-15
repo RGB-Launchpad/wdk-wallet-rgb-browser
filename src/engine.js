@@ -209,8 +209,8 @@ export default class Engine {
     /** @private */
     this._config = config
 
-    /** @private */
-    this._queue = serialQueue()
+    /** @private Commands one at a time: this module's own queue, or the host's (`config.queue`). */
+    this._queue = config.queue || serialQueue()
 
     /** @private */
     this._wallet = null

@@ -28,7 +28,7 @@ export default class Engine {
     private _bindings;
     /** @private */
     private _config;
-    /** @private */
+    /** @private Commands one at a time: this module's own queue, or the host's (`config.queue`). */
     private _queue;
     /** @private */
     private _wallet;

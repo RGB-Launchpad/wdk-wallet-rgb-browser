@@ -16,6 +16,7 @@
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
  * @property {number} [witnessSats] - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
  * @property {number} [vanillaKeychain] - The chain the wallet keeps its bitcoin on, under m/86'/coin'/0'. Defaults to 0, the chain of the identity address m/86'/coin'/0'/0/0. Set it for a phrase another wallet already uses on that address: the wallet then never spends what sits there, and still signs messages as that address.
+ * @property {(task: () => Promise<any>) => Promise<any>} [queue] - Runs each engine command. Defaults to the module's own queue, which runs them one at a time in arrival order. A host that already runs every use of the wallet one at a time passes its own, such as `(task) => task()`.
  * @property {boolean} [deferOnline] - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
  * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
@@ -123,6 +124,10 @@ export type RgbWalletConfig = {
      * - The chain the wallet keeps its bitcoin on, under m/86'/coin'/0'. Defaults to 0, the chain of the identity address m/86'/coin'/0'/0/0. Set it for a phrase another wallet already uses on that address: the wallet then never spends what sits there, and still signs messages as that address.
      */
     vanillaKeychain?: number;
+    /**
+     * - Runs each engine command. Defaults to the module's own queue, which runs them one at a time in arrival order. A host that already runs every use of the wallet one at a time passes its own, such as `(task) => task()`.
+     */
+    queue?: (task: () => Promise<any>) => Promise<any>;
     /**
      * - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
      */
