@@ -229,6 +229,9 @@ export default class Engine {
 
     /** @private */
     this._chainReads = null
+
+    /** @private The signer for the identity address, when the bitcoin is on another chain. */
+    this._identity = null
   }
 
   /** @returns {Object} The rgb-lib wallet. */
@@ -323,11 +326,11 @@ export default class Engine {
     await initialising.get(this._bindings)
 
     const keys = restoreKeys(this._config.network, mnemonic)
-
-    this._wallet = retryWhenBusy(await WasmWallet.create(JSON.stringify({
+    const keychain = this._config.vanillaKeychain || 0
+    const walletData = (dataDir, vanillaKeychain) => JSON.stringify({
       // The IndexedDB key is `dataDir/<master fingerprint>`. It carries the network by
       // default, because a shared key loads the other chain's snapshot and BDK rejects it.
-      dataDir: this._config.dataDir,
+      dataDir,
       bitcoinNetwork: this._config.network,
       databaseType: 'Sqlite',
       maxAllocationsPerUtxo: this._config.slots.maxAllocationsPerUtxo,
@@ -335,13 +338,25 @@ export default class Engine {
       accountXpubColored: keys.accountXpubColored,
       mnemonic,
       masterFingerprint: keys.masterFingerprint,
-      vanillaKeychain: null,
+      vanillaKeychain,
       supportedSchemas: this._config.schemas,
       // Pins the address index, so the wallet's address is stable across sessions.
       reuseAddresses: true
-    })))
+    })
+
+    // A wallet whose bitcoin is on another chain keeps its own snapshot: one built on the
+    // default chain describes other outputs, and BDK refuses it. Under `dataDir/`, so what
+    // clears a network's snapshots by that prefix clears these too.
+    const dataDir = keychain ? `${this._config.dataDir}/k${keychain}` : this._config.dataDir
+    this._wallet = retryWhenBusy(await WasmWallet.create(walletData(dataDir, keychain || null)))
 
     await this._wallet.flush()
+
+    // The identity address stays on the default chain. A second wallet on it signs as that
+    // address; it never goes online, so it neither sees nor spends what sits there.
+    if (keychain) {
+      this._identity = retryWhenBusy(await WasmWallet.create(walletData(`${this._config.dataDir}/identity`, null)))
+    }
 
     this._persisted = await this._requestPersistence()
 
@@ -820,12 +835,28 @@ export default class Engine {
     if (typeof message !== 'string' || !message) throw new Error('A message is required.')
 
     return this.run(async () => {
-      const address = await this.wallet.getAddress()
+      const signer = this._signer()
+      const address = await signer.getAddress()
       const psbt = await buildToSignPsbt(address, message)
-      const signed = await this.wallet.signPsbt(psbt)
+      const signed = await signer.signPsbt(psbt)
 
       return { address, signature: signatureFromWitness(extractWitness(signed)) }
     })
+  }
+
+  /**
+   * The identity address, m/86'/coin'/0'/0/0: what {@link signMessage} signs as. It is the
+   * wallet's own Bitcoin address unless the bitcoin is kept on another chain.
+   *
+   * @returns {Promise<string>} The address.
+   */
+  async identityAddress () {
+    return this.run(async () => await this._signer().getAddress())
+  }
+
+  /** @private The wallet that holds the identity key. */
+  _signer () {
+    return this._identity || this.wallet
   }
 
   /**
@@ -1087,13 +1118,16 @@ export default class Engine {
 
   /** Closes the wallet. */
   dispose () {
-    try {
-      this._wallet?.free?.()
-    } catch {
-      // Already freed, or freed by the engine on its own.
+    for (const w of [this._wallet, this._identity]) {
+      try {
+        w?.free?.()
+      } catch {
+        // Already freed, or freed by the engine on its own.
+      }
     }
 
     this._wallet = null
+    this._identity = null
     this._online = null
   }
 

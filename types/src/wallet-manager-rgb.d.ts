@@ -15,6 +15,8 @@
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
  * @property {number} [witnessSats] - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
+ * @property {number} [vanillaKeychain] - The chain the wallet keeps its bitcoin on, under m/86'/coin'/0'. Defaults to 0, the chain of the identity address m/86'/coin'/0'/0/0. Set it for a phrase another wallet already uses on that address: the wallet then never spends what sits there, and still signs messages as that address.
+ * @property {boolean} [deferOnline] - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
  * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
  * @property {import('./slots.js').SlotParameters} [slots] - Allocation slot parameters.
@@ -118,11 +120,17 @@ export type RgbWalletConfig = {
      */
     witnessSats?: number;
     /**
+     * - The chain the wallet keeps its bitcoin on, under m/86'/coin'/0'. Defaults to 0, the chain of the identity address m/86'/coin'/0'/0/0. Set it for a phrase another wallet already uses on that address: the wallet then never spends what sits there, and still signs messages as that address.
+     */
+    vanillaKeychain?: number;
+    /**
+     * - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
+     */
+    deferOnline?: boolean;
+    /**
      * - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
      */
     schemas?: string[];
-    /** Open on the snapshot alone and reach the indexer later with the account's `goOnline`. */
-    deferOnline?: boolean;
     /**
      * - Fee bidding parameters.
      */

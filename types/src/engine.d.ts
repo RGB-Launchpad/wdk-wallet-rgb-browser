@@ -42,6 +42,8 @@ export default class Engine {
     private _transferArgument;
     /** @private */
     private _chainReads;
+    /** @private The signer for the identity address, when the bitcoin is on another chain. */
+    private _identity;
     /** @returns {Object} The rgb-lib wallet. */
     get wallet(): any;
     /** @returns {string} The derivation path this account reports. */
@@ -94,6 +96,19 @@ export default class Engine {
      * @returns {Promise<void>} When the wallet is open.
      */
     open(mnemonic: string): Promise<void>;
+    /**
+     * Reaches the indexer, or tries again after a failure. Every online command needs this to
+     * have succeeded once; a wallet opened with `deferOnline` calls it when it is ready to wait.
+     * `esploraUrl` names another indexer than the configured one, for a consumer that falls
+     * back to a second server; the one that answered is the one the wallet then uses.
+     *
+     * @param {string} [esploraUrl] - The indexer to reach. Defaults to the configured one.
+     * @returns {Promise<boolean>} Whether the indexer answered.
+     */
+    /** The indexer in use: the one that answered `goOnline`, else the configured one. */
+    get esploraUrl(): any;
+    goOnline(esploraUrl?: any): Promise<boolean>;
+    _esploraUrl: any;
     /**
      * The indexer handle, for the calls that need one.
      *
@@ -271,6 +286,15 @@ export default class Engine {
         signature: string;
     }>;
     /**
+     * The identity address, m/86'/coin'/0'/0/0: what {@link signMessage} signs as. It is the
+     * wallet's own Bitcoin address unless the bitcoin is kept on another chain.
+     *
+     * @returns {Promise<string>} The address.
+     */
+    identityAddress(): Promise<string>;
+    /** @private The wallet that holds the identity key. */
+    private _signer;
+    /**
      * Brings the wallet's view of the chain up to date, without touching RGB state.
      *
      * This is the cheap half of {@link refresh}: balances and UTXOs become current, but nothing
@@ -387,6 +411,14 @@ export default class Engine {
      * @returns {Array<Object>} The transfers, as rgb-lib returns them.
      */
     private _listTransfers;
+    /**
+     * The transfers that belong to no asset: invoices for any asset whose consignment has not
+     * arrived. In both argument forms this is the listing with no asset named.
+     *
+     * @private
+     * @returns {Array<Object>} The transfers.
+     */
+    private _listTransfersNoAsset;
     /**
      * The asset-id form of `listTransfers`, including the case the argument cannot express.
      *

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `vanillaKeychain`: the chain under m/86'/coin'/0' the wallet keeps its bitcoin on. For a
+  phrase another wallet already uses on m/86'/coin'/0'/0/0, such as UniSat's first taproot
+  address: the wallet then never spends what sits there, keeps its own snapshot, and still
+  signs messages as that address through a second, offline wallet on the default chain.
+- `getIdentityAddress()` on the account: the address messages are signed as.
+
 ## 0.1.1 - 2026-09-26
 
 Documentation and repository hygiene; no code changes.

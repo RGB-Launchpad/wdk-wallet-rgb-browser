@@ -101,6 +101,16 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
     return this._readOnly.getAddress()
   }
 
+  /**
+   * The identity address, m/86'/coin'/0'/0/0, that messages are signed as. The same as
+   * {@link getAddress} unless the wallet keeps its bitcoin on another chain (`vanillaKeychain`).
+   *
+   * @returns {Promise<string>} The address.
+   */
+  async getIdentityAddress () {
+    return this._engine.identityAddress()
+  }
+
   /** @returns {Promise<bigint>} The spendable Bitcoin balance, in sats. */
   async getBalance () {
     return this._readOnly.getBalance()

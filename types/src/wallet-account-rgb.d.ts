@@ -59,6 +59,13 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      */
     verify(): Promise<boolean>;
     /**
+     * The identity address, m/86'/coin'/0'/0/0, that messages are signed as. The same as
+     * {@link getAddress} unless the wallet keeps its bitcoin on another chain (`vanillaKeychain`).
+     *
+     * @returns {Promise<string>} The address.
+     */
+    getIdentityAddress(): Promise<string>;
+    /**
      * The wallet's activity from its own records, in one read that does not ask the network:
      * assets, each asset's transfers tagged with its id, and the Bitcoin transactions.
      *
@@ -216,8 +223,13 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      * @returns {Promise<void>} When the wallet is in step with the chain.
      */
     sync(): Promise<void>;
-    /** Reaches the indexer, for a wallet opened with `deferOnline`, or again after a failure. */
-    goOnline(esploraUrl?: string): Promise<boolean>;
+    /**
+     * Reaches the indexer, for a wallet opened with `deferOnline`, or again after the indexer
+     * could not be reached. Not queued: nothing else runs before the wallet is online.
+     *
+     * @returns {Promise<boolean>} Whether the indexer answered.
+     */
+    goOnline(esploraUrl: any): Promise<boolean>;
     /**
      * Picks up consignments and advances the transfers waiting on them. This is the step that
      * turns a transfer someone sent into an asset this wallet holds.

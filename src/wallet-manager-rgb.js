@@ -52,6 +52,7 @@ const COIN_TYPE = { Mainnet: 0 }
  * @property {number} [minConfirmations] - Confirmations an incoming transfer must reach. Defaults to 1.
  * @property {number} [invoiceMinutes] - How long an invoice stays valid. Defaults to 60.
  * @property {number} [witnessSats] - Sats the sender parks on the output a witness transfer creates. Defaults to 1000.
+ * @property {number} [vanillaKeychain] - The chain the wallet keeps its bitcoin on, under m/86'/coin'/0'. Defaults to 0, the chain of the identity address m/86'/coin'/0'/0/0. Set it for a phrase another wallet already uses on that address: the wallet then never spends what sits there, and still signs messages as that address.
  * @property {boolean} [deferOnline] - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
  * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
@@ -101,6 +102,15 @@ export default class WalletManagerRgb extends WalletManager {
     // A consumer that talks to more than one such chain gives each its own key.
     const dataDir = config.dataDir || dataDirOf(network)
 
+    // The chain the wallet keeps its bitcoin on, under m/86'/coin'/0'. By default (0) it is
+    // the chain of the identity address, m/86'/coin'/0'/0/0. A phrase that another wallet
+    // already uses on that address keeps its bitcoin on another chain instead: this wallet then
+    // never spends what sits there, and still signs as that address.
+    const vanillaKeychain = config.vanillaKeychain ?? 0
+    if (!Number.isInteger(vanillaKeychain) || vanillaKeychain < 0 || vanillaKeychain > 255) {
+      throw new RangeError('vanillaKeychain is an integer from 0 to 255.')
+    }
+
     /** @private */
     this._cfg = {
       network,
@@ -116,6 +126,7 @@ export default class WalletManagerRgb extends WalletManager {
       // rgb-lib refuses to open a mainnet wallet that lists IFA.
       schemas: config.schemas || (network === 'Mainnet' ? ['Nia'] : ['Nia', 'Ifa']),
       deferOnline: !!config.deferOnline,
+      vanillaKeychain,
       fee,
       slots,
       path: `m/86'/${COIN_TYPE[network] ?? 1}'/0'`
