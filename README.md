@@ -155,6 +155,18 @@ Two consequences worth designing for: the interface should not tell the user it 
 completion needs the wallet open, since refreshing needs the engine and the engine needs the
 recovery phrase.
 
+## Checking before signing
+
+`prepareTransfer()` returns the unsigned transaction (`psbt`) and the outputs it spends, and
+signs nothing; `finishTransfer(prepared)` signs it and posts the consignment. In between the
+host can show the user what is about to be signed.
+
+rgb-lib holds nothing for a prepared transfer: its inputs stay free, and another send can
+spend them. Signed afterwards, the prepared one would spend an output already spent, and its
+recipient would wait for a transfer that never confirms. So `finishTransfer` refuses when the
+wallet has signed anything since the transfer was prepared, or when an output it spends is no
+longer the wallet's. Prepare it again then.
+
 ## Two things a browser wallet gets wrong against a live chain
 
 Both were found by running this module against a real regtest chain, and both look like the

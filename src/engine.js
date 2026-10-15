@@ -18,6 +18,7 @@ import { bid, clearingRate } from './fee.js'
 import { buildToSignPsbt, extractWitness, signatureFromWitness } from './bip322.js'
 import { explainReceiveError, explainSendError, freeSlots, slotBlocker, slotsToCreate } from './slots.js'
 import serialQueue from './serial-queue.js'
+import { psbtInputs } from './psbt.js'
 
 /**
  * wasm-bindgen's initialiser is not safe to enter twice at once: the second call runs the
@@ -232,6 +233,12 @@ export default class Engine {
 
     /** @private The signer for the identity address, when the bitcoin is on another chain. */
     this._identity = null
+
+    /**
+     * @private Counts the transactions this engine has signed. A send prepared and not yet
+     * signed holds nothing: one signed in between may have spent its inputs.
+     */
+    this._spends = 0
   }
 
   /** @returns {Object} The rgb-lib wallet. */
@@ -588,6 +595,7 @@ export default class Engine {
       const psbt = await this.wallet.createUtxosBegin(
         online, false, count, this._config.slots.utxoSizeSat, rate, false)
       const signed = await this.wallet.signPsbt(psbt)
+      this._spends++
       // No sync after the broadcast: a sync that fails would report as failed a transaction
       // already on its way, and a retry would pay for it twice. The next sync picks it up.
       // rgb-lib counts what it created by that sync, so the count is the one asked for: the
@@ -985,7 +993,88 @@ export default class Engine {
    * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA): the whole of it moves, and rgb-lib takes the assignment as non-fungible rather than an amount.
    * @returns {Promise<Object>} The transfer rgb-lib recorded.
    */
-  async sendAsset ({ invoice, assetId, amount, feeRate, nonFungible = false, notAfter }) {
+  async sendAsset (options) {
+    const send = await this._sendRequest(options)
+
+    return runSend(this, options.notAfter, async () => {
+      const psbt = await this._sendBegin(send)
+
+      return this._sendEnd(send.online, psbt)
+    })
+  }
+
+  /**
+   * The first half of {@link sendAsset}: the unsigned transaction, for the user to check before
+   * anything is signed. Nothing is recorded and nothing is held; {@link finishSendAsset} signs it.
+   * A prepared send left unfinished costs nothing.
+   *
+   * @param {Object} options - As for {@link sendAsset}.
+   * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number }>} The prepared send: the PSBT, the outputs it spends, what it sends where, and the engine's spend count when it was made.
+   */
+  async prepareSendAsset (options) {
+    const send = await this._sendRequest(options)
+
+    return runSend(this, options.notAfter, async () => {
+      const psbt = String(await this._sendBegin(send))
+
+      return {
+        psbt,
+        inputs: psbtInputs(psbt),
+        assetId: send.assetId,
+        recipientId: send.data.recipientId,
+        amount: send.value.toString(),
+        feeRate: send.rate,
+        spends: this._spends
+      }
+    })
+  }
+
+  /**
+   * The second half of {@link sendAsset}: signs a send {@link prepareSendAsset} made, and posts
+   * its consignment. Refused when the wallet signed anything since the send was prepared, or
+   * when an output it spends is no longer the wallet's: rgb-lib would sign it all the same,
+   * two transactions would spend one output, and the recipient would wait for a transfer that
+   * never confirms. Prepare it again then.
+   *
+   * @param {Object} prepared - What {@link prepareSendAsset} returned.
+   * @param {Object} [options] - The send.
+   * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it nothing is sent and the call throws.
+   * @returns {Promise<Object>} The transfer rgb-lib recorded, as {@link sendAsset} returns it.
+   */
+  async finishSendAsset (prepared, { notAfter } = {}) {
+    const online = this.needOnline()
+    const psbt = String(prepared?.psbt || '')
+
+    if (!psbt) throw new Error('Nothing prepared to send.')
+
+    return runSend(this, notAfter, async () => {
+      if (prepared.spends !== this._spends) {
+        throw new Error('The wallet has sent something since this send was prepared. Prepare it again.')
+      }
+
+      await this.wallet.sync(online)
+
+      const own = new Set([
+        ...this.plain(await this.wallet.listUnspents(false)).map((u) => `${u.utxo.outpoint.txid}:${u.utxo.outpoint.vout}`),
+        ...this.plain(await this.wallet.listUnspentsVanilla(online, 0, true)).map((o) => String(o.outpoint))
+      ])
+      const gone = psbtInputs(psbt).filter((i) => !own.has(`${i.txid}:${i.vout}`))
+
+      if (gone.length) {
+        throw new Error(`An output this send spends is no longer the wallet's (${gone.map((i) => `${i.txid}:${i.vout}`).join(', ')}). Prepare it again.`)
+      }
+
+      return this._sendEnd(online, psbt)
+    })
+  }
+
+  /**
+   * An asset send's request, read and checked: the invoice, the asset, the amount, the endpoints
+   * and the fee rate. Nothing is asked of the wallet but its network.
+   *
+   * @private
+   */
+  async _sendRequest ({ invoice, assetId, amount, feeRate, nonFungible = false }) {
     const online = this.needOnline()
     const data = this.plain(new this._bindings.WasmInvoice(String(invoice || '').trim()).invoiceData())
 
@@ -1011,57 +1100,74 @@ export default class Engine {
 
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
-    return runSend(this, notAfter, async () => {
-      await this.wallet.sync(online)
+    return { online, data, assetId: assetId || data.assetId, value, nonFungible, endpoints, rate }
+  }
 
-      // A witness recipient has no UTXO yet: the transfer creates the output the asset lands
-      // on, and has to be told how many sats to put on it. A blinded one already owns its
-      // output and carries no witness data at all — passing some is an error, and leaving it
-      // out for a witness recipient is the same error the other way round.
-      //
-      // The sats go as a string and `blinding` has to be present even when empty: rgb-lib
-      // reads these through a deserialiser that takes a string, an unsigned number or null,
-      // and a plain JavaScript integer arrives as a signed one, which it refuses.
-      const witnessData = isWitnessRecipient(data.recipientId)
-        ? { amountSat: String(this._config.witnessSats), blinding: null }
-        : undefined
+  /**
+   * The unsigned transaction of an asset send. Runs inside the queue.
+   *
+   * @private
+   */
+  async _sendBegin ({ online, data, assetId, value, nonFungible, endpoints, rate }) {
+    await this.wallet.sync(online)
 
-      const recipient = (fungible) => ({
-        [assetId || data.assetId]: [{
-          recipientId: data.recipientId,
-          witnessData,
-          assignment: nonFungible ? 'NonFungible' : { Fungible: fungible },
-          transportEndpoints: endpoints
-        }]
-      })
+    // A witness recipient has no UTXO yet: the transfer creates the output the asset lands
+    // on, and has to be told how many sats to put on it. A blinded one already owns its
+    // output and carries no witness data at all — passing some is an error, and leaving it
+    // out for a witness recipient is the same error the other way round.
+    //
+    // The sats go as a string and `blinding` has to be present even when empty: rgb-lib
+    // reads these through a deserialiser that takes a string, an unsigned number or null,
+    // and a plain JavaScript integer arrives as a signed one, which it refuses.
+    const witnessData = isWitnessRecipient(data.recipientId)
+      ? { amountSat: String(this._config.witnessSats), blinding: null }
+      : undefined
 
-      let psbt
-
-      try {
-        try {
-          psbt = await this.wallet.sendBegin(
-            online, recipient(value), false, rate, this._config.minConfirmations)
-        } catch (error) {
-          // Amounts pass as BigInt. Number loses precision past 2^53 and real supplies sit
-          // above it, so the Number path is only taken when the value fits exactly.
-          if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-            throw new Error(`The amount exceeds 2^53 and the bindings rejected BigInt: ${error?.message || error}`)
-          }
-
-          psbt = await this.wallet.sendBegin(
-            online, recipient(Number(value)), false, rate, this._config.minConfirmations)
-        }
-      } catch (error) {
-        throw new Error(explainSendError(error?.message || error, rate))
-      }
-
-      const signed = await this.wallet.signPsbt(psbt)
-      const result = this.plain(await this.wallet.sendEnd(online, signed, false))
-
-      await this.wallet.flush()
-
-      return result
+    const recipient = (fungible) => ({
+      [assetId]: [{
+        recipientId: data.recipientId,
+        witnessData,
+        assignment: nonFungible ? 'NonFungible' : { Fungible: fungible },
+        transportEndpoints: endpoints
+      }]
     })
+
+    let psbt
+
+    try {
+      try {
+        psbt = await this.wallet.sendBegin(
+          online, recipient(value), false, rate, this._config.minConfirmations)
+      } catch (error) {
+        // Amounts pass as BigInt. Number loses precision past 2^53 and real supplies sit
+        // above it, so the Number path is only taken when the value fits exactly.
+        if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Error(`The amount exceeds 2^53 and the bindings rejected BigInt: ${error?.message || error}`)
+        }
+
+        psbt = await this.wallet.sendBegin(
+          online, recipient(Number(value)), false, rate, this._config.minConfirmations)
+      }
+    } catch (error) {
+      throw new Error(explainSendError(error?.message || error, rate))
+    }
+
+    return psbt
+  }
+
+  /**
+   * Signs an asset send's transaction and posts its consignment. Runs inside the queue.
+   *
+   * @private
+   */
+  async _sendEnd (online, psbt) {
+    const signed = await this.wallet.signPsbt(psbt)
+    this._spends++
+    const result = this.plain(await this.wallet.sendEnd(online, signed, false))
+
+    await this.wallet.flush()
+
+    return result
   }
 
   /**
@@ -1106,6 +1212,7 @@ export default class Engine {
 
       const psbt = await this.wallet.sendBtcBegin(online, String(address).trim(), value, rate, false)
       const signed = await this.wallet.signPsbt(psbt)
+      this._spends++
       // No sync after the broadcast, as for slots: a failed sync must not turn a sent
       // transaction into a reported failure.
       const txid = await this.wallet.sendBtcEnd(online, signed, true)

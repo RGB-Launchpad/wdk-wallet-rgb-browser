@@ -137,6 +137,44 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
         transfer: any;
     }>;
     /**
+     * The first half of {@link transfer}, for a host that shows the user what will be signed
+     * before signing it: the unsigned transaction and the outputs it spends. Nothing is recorded
+     * and nothing is held; {@link finishTransfer} signs it, and a prepared transfer left
+     * unfinished costs nothing.
+     *
+     * @param {Object} options - As for {@link transfer}.
+     * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number }>} The prepared transfer.
+     */
+    prepareTransfer(options: any): Promise<{
+        psbt: string;
+        inputs: Array<{
+            txid: string;
+            vout: number;
+        }>;
+        assetId: string;
+        recipientId: string;
+        amount: string;
+        feeRate: bigint;
+        spends: number;
+    }>;
+    /**
+     * The second half of {@link transfer}: signs what {@link prepareTransfer} returned and posts
+     * the consignment. Refused, with nothing signed, when the wallet has signed anything since
+     * or an output the transfer spends is no longer the wallet's; prepare it again then.
+     *
+     * @param {Object} prepared - What {@link prepareTransfer} returned.
+     * @param {Object} [options] - The send.
+     * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it nothing is sent and the call throws.
+     * @returns {Promise<{ hash: string, fee: bigint, transfer: Object }>} The result, as {@link transfer} gives it.
+     */
+    finishTransfer(prepared: any, options?: {
+        notAfter?: number;
+    }): Promise<{
+        hash: string;
+        fee: bigint;
+        transfer: any;
+    }>;
+    /**
      * The transfers this wallet has sent that are still waiting on their recipient.
      *
      * See {@link transfer}: a send is not on the chain until the recipient has acknowledged

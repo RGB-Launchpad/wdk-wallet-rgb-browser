@@ -9,6 +9,10 @@
 - `getIdentityAddress()` on the account: the address messages are signed as.
 - `queue`: a host that already runs every use of the wallet one at a time hands in its own
   queue, and the module's arrival-order queue steps aside.
+- `prepareTransfer()` and `finishTransfer()` on the account: a transfer in two halves, so a host
+  can show the user the unsigned transaction and the outputs it spends before signing. The
+  second half is refused when the wallet signed anything in between or an input is no longer
+  the wallet's: rgb-lib would otherwise sign two transactions spending one output.
 
 ## 0.1.1 - 2026-09-26
 

@@ -44,6 +44,11 @@ export default class Engine {
     private _chainReads;
     /** @private The signer for the identity address, when the bitcoin is on another chain. */
     private _identity;
+    /**
+     * @private Counts the transactions this engine has signed. A send prepared and not yet
+     * signed holds nothing: one signed in between may have spent its inputs.
+     */
+    private _spends;
     /** @returns {Object} The rgb-lib wallet. */
     get wallet(): any;
     /** @returns {string} The derivation path this account reports. */
@@ -359,13 +364,67 @@ export default class Engine {
      * @param {boolean} [options.nonFungible] - The asset is a unique token (UDA): the whole of it moves, and rgb-lib takes the assignment as non-fungible rather than an amount.
      * @returns {Promise<Object>} The transfer rgb-lib recorded.
      */
-    sendAsset({ invoice, assetId, amount, feeRate, nonFungible, notAfter }: {
+    sendAsset(options: {
         invoice: string;
         assetId?: string;
         amount?: bigint | number | string;
         feeRate?: number | bigint;
         nonFungible?: boolean;
     }): Promise<any>;
+    /**
+     * The first half of {@link sendAsset}: the unsigned transaction, for the user to check before
+     * anything is signed. Nothing is recorded and nothing is held; {@link finishSendAsset} signs it.
+     * A prepared send left unfinished costs nothing.
+     *
+     * @param {Object} options - As for {@link sendAsset}.
+     * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number }>} The prepared send: the PSBT, the outputs it spends, what it sends where, and the engine's spend count when it was made.
+     */
+    prepareSendAsset(options: any): Promise<{
+        psbt: string;
+        inputs: Array<{
+            txid: string;
+            vout: number;
+        }>;
+        assetId: string;
+        recipientId: string;
+        amount: string;
+        feeRate: bigint;
+        spends: number;
+    }>;
+    /**
+     * The second half of {@link sendAsset}: signs a send {@link prepareSendAsset} made, and posts
+     * its consignment. Refused when the wallet signed anything since the send was prepared, or
+     * when an output it spends is no longer the wallet's: rgb-lib would sign it all the same,
+     * two transactions would spend one output, and the recipient would wait for a transfer that
+     * never confirms. Prepare it again then.
+     *
+     * @param {Object} prepared - What {@link prepareSendAsset} returned.
+     * @param {Object} [options] - The send.
+     * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it nothing is sent and the call throws.
+     * @returns {Promise<Object>} The transfer rgb-lib recorded, as {@link sendAsset} returns it.
+     */
+    finishSendAsset(prepared: any, { notAfter }?: {
+        notAfter?: number;
+    }): Promise<any>;
+    /**
+     * An asset send's request, read and checked: the invoice, the asset, the amount, the endpoints
+     * and the fee rate. Nothing is asked of the wallet but its network.
+     *
+     * @private
+     */
+    private _sendRequest;
+    /**
+     * The unsigned transaction of an asset send. Runs inside the queue.
+     *
+     * @private
+     */
+    private _sendBegin;
+    /**
+     * Signs an asset send's transaction and posts its consignment. Runs inside the queue.
+     *
+     * @private
+     */
+    private _sendEnd;
     /**
      * The transfers this wallet has sent that are still waiting on their recipient.
      *
