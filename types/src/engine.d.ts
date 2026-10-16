@@ -44,6 +44,8 @@ export default class Engine {
     private _chainReads;
     /** @private The signer for the identity address, when the bitcoin is on another chain. */
     private _identity;
+    /** @private The network's address prefix, when the identity key is a Mainnet one. */
+    private _identityHrp;
     /**
      * @private Counts the transactions this engine has signed. A send prepared and not yet
      * signed holds nothing: one signed in between may have spent its inputs.
@@ -299,6 +301,8 @@ export default class Engine {
     identityAddress(): Promise<string>;
     /** @private The wallet that holds the identity key. */
     private _signer;
+    /** @private The identity address, written for the wallet's network. */
+    private _signerAddress;
     /**
      * Brings the wallet's view of the chain up to date, without touching RGB state.
      *

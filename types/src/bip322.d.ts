@@ -11,6 +11,15 @@ export function decodeAddress(address: string): {
     program: Uint8Array;
 };
 /**
+ * The same address under another human-readable part: the same scriptPubKey, written for
+ * another network.
+ *
+ * @param {string} address - A segwit address.
+ * @param {string} hrp - The human-readable part, such as `bc`, `tb` or `bcrt`.
+ * @returns {string} The address.
+ */
+export function withHrp(address: string, hrp: string): string;
+/**
  * The scriptPubKey an address pays to.
  *
  * @param {string} address - The address.
