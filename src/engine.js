@@ -15,10 +15,13 @@
 'use strict'
 
 import { bid, clearingRate } from './fee.js'
-import { buildToSignPsbt, extractWitness, signatureFromWitness } from './bip322.js'
+import { buildToSignPsbt, extractWitness, signatureFromWitness, withHrp } from './bip322.js'
 import { explainReceiveError, explainSendError, freeSlots, slotBlocker, slotsToCreate } from './slots.js'
 import serialQueue from './serial-queue.js'
 import { psbtInputs } from './psbt.js'
+
+/** Segwit address prefixes by network. */
+const HRP = { Mainnet: 'bc', Testnet: 'tb', Testnet4: 'tb', Signet: 'tb', Regtest: 'bcrt' }
 
 /**
  * wasm-bindgen's initialiser is not safe to enter twice at once: the second call runs the
@@ -234,6 +237,9 @@ export default class Engine {
     /** @private The signer for the identity address, when the bitcoin is on another chain. */
     this._identity = null
 
+    /** @private The network's address prefix, when the identity key is a Mainnet one. */
+    this._identityHrp = null
+
     /**
      * @private Counts the transactions this engine has signed. A send prepared and not yet
      * signed holds nothing: one signed in between may have spent its inputs.
@@ -332,24 +338,26 @@ export default class Engine {
 
     await initialising.get(this._bindings)
 
-    const keys = restoreKeys(this._config.network, mnemonic)
     const keychain = this._config.vanillaKeychain || 0
-    const walletData = (dataDir, vanillaKeychain) => JSON.stringify({
-      // The IndexedDB key is `dataDir/<master fingerprint>`. It carries the network by
-      // default, because a shared key loads the other chain's snapshot and BDK rejects it.
-      dataDir,
-      bitcoinNetwork: this._config.network,
-      databaseType: 'Sqlite',
-      maxAllocationsPerUtxo: this._config.slots.maxAllocationsPerUtxo,
-      accountXpubVanilla: keys.accountXpubVanilla,
-      accountXpubColored: keys.accountXpubColored,
-      mnemonic,
-      masterFingerprint: keys.masterFingerprint,
-      vanillaKeychain,
-      supportedSchemas: this._config.schemas,
-      // Pins the address index, so the wallet's address is stable across sessions.
-      reuseAddresses: true
-    })
+    const walletData = (dataDir, vanillaKeychain, network = this._config.network) => {
+      const keys = restoreKeys(network, mnemonic)
+      return JSON.stringify({
+        // The IndexedDB key is `dataDir/<master fingerprint>`. It carries the network by
+        // default, because a shared key loads the other chain's snapshot and BDK rejects it.
+        dataDir,
+        bitcoinNetwork: network,
+        databaseType: 'Sqlite',
+        maxAllocationsPerUtxo: this._config.slots.maxAllocationsPerUtxo,
+        accountXpubVanilla: keys.accountXpubVanilla,
+        accountXpubColored: keys.accountXpubColored,
+        mnemonic,
+        masterFingerprint: keys.masterFingerprint,
+        vanillaKeychain,
+        supportedSchemas: network === this._config.network ? this._config.schemas : ['Nia'],
+        // Pins the address index, so the wallet's address is stable across sessions.
+        reuseAddresses: true
+      })
+    }
 
     // A wallet whose bitcoin is on another chain keeps its own snapshot: one built on the
     // default chain describes other outputs, and BDK refuses it. Under `dataDir/`, so what
@@ -361,8 +369,15 @@ export default class Engine {
 
     // The identity address stays on the default chain. A second wallet on it signs as that
     // address; it never goes online, so it neither sees nor spends what sits there.
+    // With `identityCoinType` 0 off Mainnet its key is the Mainnet one, m/86'/0'/0'/0/0, as
+    // wallets that use coin type 0 on every network have it; the address is written for the
+    // wallet's network.
     if (keychain) {
-      this._identity = retryWhenBusy(await WasmWallet.create(walletData(`${this._config.dataDir}/identity`, null)))
+      const coinZero = this._config.identityCoinType === 0 && this._config.network !== 'Mainnet'
+      this._identity = retryWhenBusy(await WasmWallet.create(coinZero
+        ? walletData(`${this._config.dataDir}/identity-c0`, null, 'Mainnet')
+        : walletData(`${this._config.dataDir}/identity`, null)))
+      this._identityHrp = coinZero ? HRP[this._config.network] : null
     }
 
     this._persisted = await this._requestPersistence()
@@ -844,7 +859,7 @@ export default class Engine {
 
     return this.run(async () => {
       const signer = this._signer()
-      const address = await signer.getAddress()
+      const address = await this._signerAddress()
       const psbt = await buildToSignPsbt(address, message)
       const signed = await signer.signPsbt(psbt)
 
@@ -859,12 +874,18 @@ export default class Engine {
    * @returns {Promise<string>} The address.
    */
   async identityAddress () {
-    return this.run(async () => await this._signer().getAddress())
+    return this.run(async () => await this._signerAddress())
   }
 
   /** @private The wallet that holds the identity key. */
   _signer () {
     return this._identity || this.wallet
+  }
+
+  /** @private The identity address, written for the wallet's network. */
+  async _signerAddress () {
+    const address = await this._signer().getAddress()
+    return this._identityHrp ? withHrp(address, this._identityHrp) : address
   }
 
   /**

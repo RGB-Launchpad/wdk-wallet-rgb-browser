@@ -177,6 +177,23 @@ export function decodeAddress (address) {
 }
 
 /**
+ * The same address under another human-readable part: the same scriptPubKey, written for
+ * another network.
+ *
+ * @param {string} address - A segwit address.
+ * @param {string} hrp - The human-readable part, such as `bc`, `tb` or `bcrt`.
+ * @returns {string} The address.
+ */
+export function withHrp (address, hrp) {
+  const { version, program } = decodeAddress(address)
+  const data = [version, ...convertBits(program, 8, 5, true)]
+  const mod = polymod([...hrpExpand(hrp), ...data, 0, 0, 0, 0, 0, 0]) ^ (version === 0 ? 1 : 0x2bc830a3)
+  const checksum = [0, 1, 2, 3, 4, 5].map((i) => (mod >> (5 * (5 - i))) & 31)
+
+  return hrp + '1' + [...data, ...checksum].map((v) => CHARSET[v]).join('')
+}
+
+/**
  * The scriptPubKey an address pays to.
  *
  * @param {string} address - The address.

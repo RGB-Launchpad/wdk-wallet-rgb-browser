@@ -10,7 +10,8 @@ import {
   extractWitness,
   hex,
   scriptPubKeyOf,
-  taggedHash
+  taggedHash,
+  withHrp
 } from '../src/bip322.js'
 
 // The address from the BIP-322 specification's own vectors (P2WPKH).
@@ -60,6 +61,16 @@ describe('address decoding', () => {
     const bad = 'bcrt1plqhzpzvndkcyqw3xj3f98r6kx2ev2p38l6wj82d7zx2c6cnvjcqqunnd4m'
 
     expect(() => decodeAddress(bad)).toThrow(/checksum/)
+  })
+
+  test('an address written for another network keeps its scriptPubKey (bitcoind validates the results)', () => {
+    const taproot = 'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr'
+
+    expect(withHrp(taproot, 'tb')).toBe('tb1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqp3mvzv')
+    expect(withHrp(taproot, 'bcrt')).toBe('bcrt1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqvg32hk')
+    expect(withHrp(taproot, 'bc')).toBe(taproot)
+    expect(withHrp(ADDR, 'bcrt')).toBe('bcrt1q9vza2e8x573nczrlzms0wvx3gsqjx7vay85cr9')
+    expect(hex.to(scriptPubKeyOf(withHrp(taproot, 'tb')))).toBe(hex.to(scriptPubKeyOf(taproot)))
   })
 
   test('the bech32 constant does not validate a bech32m address', () => {
