@@ -339,7 +339,8 @@ export default class Engine {
     await initialising.get(this._bindings)
 
     const keychain = this._config.vanillaKeychain || 0
-    const walletData = (dataDir, vanillaKeychain, network = this._config.network) => {
+    const colored = this._config.coloredKeychain || 0
+    const walletData = (dataDir, vanillaKeychain, network = this._config.network, coloredKeychain = null) => {
       const keys = restoreKeys(network, mnemonic)
       return JSON.stringify({
         // The IndexedDB key is `dataDir/<master fingerprint>`. It carries the network by
@@ -353,17 +354,31 @@ export default class Engine {
         mnemonic,
         masterFingerprint: keys.masterFingerprint,
         vanillaKeychain,
+        ...(coloredKeychain ? { coloredKeychain } : {}),
         supportedSchemas: network === this._config.network ? this._config.schemas : ['Nia'],
         // Pins the address index, so the wallet's address is stable across sessions.
         reuseAddresses: true
       })
     }
 
-    // A wallet whose bitcoin is on another chain keeps its own snapshot: one built on the
-    // default chain describes other outputs, and BDK refuses it. Under `dataDir/`, so what
-    // clears a network's snapshots by that prefix clears these too.
-    const dataDir = keychain ? `${this._config.dataDir}/k${keychain}` : this._config.dataDir
-    this._wallet = retryWhenBusy(await WasmWallet.create(walletData(dataDir, keychain || null)))
+    // A wallet whose bitcoin or RGB outputs are on another chain keeps its own snapshot: one
+    // built on the default chains describes other outputs, and BDK refuses it. Under
+    // `dataDir/`, so what clears a network's snapshots by that prefix clears these too.
+    const sub = keychain || colored ? `k${keychain}${colored ? `c${colored}` : ''}` : null
+    const dataDir = sub ? `${this._config.dataDir}/${sub}` : this._config.dataDir
+    this._wallet = retryWhenBusy(await WasmWallet.create(walletData(dataDir, keychain || null, this._config.network, colored || null)))
+
+    // Bindings that do not read `coloredKeychain` open the wallet on rgb-lib's own chain, the
+    // one this wallet was asked to stay off: refused rather than used.
+    if (colored) {
+      const data = this._wallet.getWalletData()
+      const read = data instanceof Map ? data.get('coloredKeychain') : data?.coloredKeychain
+      if (Number(read) !== colored) {
+        try { this._wallet.free?.() } catch {}
+        this._wallet = null
+        throw new Error('These rgb-lib bindings do not read coloredKeychain; the wallet was not opened.')
+      }
+    }
 
     await this._wallet.flush()
 

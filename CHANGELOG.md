@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- `coloredKeychain`: the chain under the colored account m/86'/827166'/0' (827167' off Mainnet)
+  the wallet keeps its RGB outputs on. For a phrase another rgb-lib wallet already uses: two
+  wallets on the same colored chain each take the other's asset outputs for empty ones, and
+  spending one destroys the assets on it. The wallet keeps its own snapshot. It needs bindings
+  that read `coloredKeychain` in their wallet data; with bindings that do not, opening fails
+  rather than falling back to the shared chain.
+
 ## 0.2.0 - 2026-10-16
 
 Fixed:

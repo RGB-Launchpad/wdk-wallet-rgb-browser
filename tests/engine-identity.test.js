@@ -17,7 +17,9 @@ const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon 
 const MAINNET_IDENTITY = 'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr'
 const MAINNET_IDENTITY_ON_REGTEST = 'bcrt1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqvg32hk'
 
-function bindings (created) {
+// `readsColored`: whether the bindings take `coloredKeychain` from the wallet data, as this
+// module's published engine does not.
+function bindings (created, { readsColored = true } = {}) {
   class WasmWallet {
     static async create (json) {
       const data = JSON.parse(json)
@@ -26,6 +28,10 @@ function bindings (created) {
         flush: async () => {},
         getAddress: async () => (data.vanillaKeychain ? WALLET : data.bitcoinNetwork === 'Mainnet' ? MAINNET_IDENTITY : IDENTITY),
         signPsbt: async (psbt) => { w.signed = psbt; throw new Error(`signed by ${data.dataDir}`) },
+        getWalletData: () => {
+          const { coloredKeychain, ...rest } = data
+          return readsColored ? { ...rest, coloredKeychain: coloredKeychain ?? null } : rest
+        },
         free: () => { w.freed = true }
       }
       created.push(w)
@@ -39,9 +45,8 @@ function bindings (created) {
   }
 }
 
-const open = async (vanillaKeychain, identityCoinType = null) => {
-  const created = []
-  const engine = new Engine(bindings(created), { network: 'Regtest', dataDir: ':memory:/Regtest', slots: SLOTS, fee: {}, deferOnline: true, vanillaKeychain, identityCoinType, schemas: ['Nia', 'Ifa'] })
+const open = async (vanillaKeychain, identityCoinType = null, { coloredKeychain = 0, readsColored = true, created = [] } = {}) => {
+  const engine = new Engine(bindings(created, { readsColored }), { network: 'Regtest', dataDir: ':memory:/Regtest', slots: SLOTS, fee: {}, deferOnline: true, vanillaKeychain, coloredKeychain, identityCoinType, schemas: ['Nia', 'Ifa'] })
   engine._requestPersistence = async () => false
   await engine.open(PHRASE)
   return { engine, created }
@@ -87,6 +92,44 @@ describe('vanillaKeychain', () => {
   test('the manager refuses a keychain outside 0 to 255', () => {
     expect(() => new WalletManagerRgb(PHRASE, { network: 'Regtest', esploraUrl: 'http://x', vanillaKeychain: 256 })).toThrow(RangeError)
     expect(() => new WalletManagerRgb(PHRASE, { network: 'Regtest', esploraUrl: 'http://x', vanillaKeychain: 1.5 })).toThrow(RangeError)
+  })
+})
+
+describe('coloredKeychain', () => {
+  test('by default the wallet data names no colored chain, and the snapshot stays where it was', async () => {
+    const { created } = await open(2)
+    expect(created.map((w) => [w.data.dataDir, 'coloredKeychain' in w.data])).toEqual([
+      [':memory:/Regtest/k2', false],
+      [':memory:/Regtest/identity', false]
+    ])
+  })
+
+  test('another colored chain: the wallet opens on it with a snapshot of its own; the identity wallet does not', async () => {
+    const { engine, created } = await open(2, null, { coloredKeychain: 2 })
+    expect(created.map((w) => [w.data.dataDir, w.data.vanillaKeychain, w.data.coloredKeychain])).toEqual([
+      [':memory:/Regtest/k2c2', 2, 2],
+      [':memory:/Regtest/identity', null, undefined]
+    ])
+    expect(await engine.identityAddress()).toBe(IDENTITY)
+  })
+
+  test('another colored chain with the bitcoin on the default one', async () => {
+    const { created } = await open(0, null, { coloredKeychain: 3 })
+    expect(created.map((w) => [w.data.dataDir, w.data.vanillaKeychain, w.data.coloredKeychain])).toEqual([
+      [':memory:/Regtest/k0c3', null, 3]
+    ])
+  })
+
+  test('bindings that do not read it: the wallet is not opened', async () => {
+    const created = []
+    await expect(open(2, null, { coloredKeychain: 2, readsColored: false, created })).rejects.toThrow('do not read coloredKeychain')
+    expect(created).toHaveLength(1)
+    expect(created[0].freed).toBe(true)
+  })
+
+  test('the manager refuses a colored chain outside 0 to 255', () => {
+    expect(() => new WalletManagerRgb(PHRASE, { network: 'Regtest', esploraUrl: 'http://x', coloredKeychain: 256 })).toThrow(RangeError)
+    expect(() => new WalletManagerRgb(PHRASE, { network: 'Regtest', esploraUrl: 'http://x', coloredKeychain: -1 })).toThrow(RangeError)
   })
 })
 
