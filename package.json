@@ -38,7 +38,7 @@
     "jest": "30.5.2",
     "playwright": "1.63.0",
     "standard": "17.1.2",
-    "typescript": "5.8.3"
+    "typescript": "7.0.2"
   },
   "exports": {
     ".": {
