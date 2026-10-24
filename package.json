@@ -29,7 +29,7 @@
     "@utexo/rgb-lib-wasm": "^1.0.0-beta.3"
   },
   "devDependencies": {
-    "@tetherto/wdk": "1.0.0-beta.18",
+    "@tetherto/wdk": "1.0.0-beta.21",
     "@tetherto/wdk-wallet": "1.0.0-beta.20",
     "@utexo/rgb-lib-wasm": "1.0.0-beta.3",
     "buffer": "6.0.3",
