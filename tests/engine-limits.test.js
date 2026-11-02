@@ -125,7 +125,10 @@ describe('one instance per wallet', () => {
   const opened = []
   afterEach(() => { for (const m of opened.splice(0)) m.dispose() })
 
-  test('a second manager on the same phrase and network waits, and is refused while the first stays open', async () => {
+  // Where there are no Web Locks (Node before 24) nothing is held, as the README says.
+  const withLocks = globalThis.navigator?.locks ? test : test.skip
+
+  withLocks('a second manager on the same phrase and network waits, and is refused while the first stays open', async () => {
     const first = new WalletManagerRgb(PHRASE, { ...config, bindings: bindings() })
     const second = new WalletManagerRgb(PHRASE, { ...config, bindings: bindings() })
     opened.push(first, second)
