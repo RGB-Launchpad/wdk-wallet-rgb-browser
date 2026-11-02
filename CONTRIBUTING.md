@@ -21,6 +21,12 @@ regenerated `types/` along with it and add a line under `Unreleased` in
 Changes to transfers, invoices or the snapshot are best also checked against a real chain
 with `npm run test:live`; see [Development](README.md#development) in the README.
 
+## Releases
+
+A maintainer pushes a `v*` tag; the `publish` workflow checks and tests that commit, publishes
+it to npm with provenance once approved, and creates the GitHub release from its CHANGELOG
+section.
+
 ## Security
 
 Do not report vulnerabilities in issues or pull requests. See [SECURITY.md](SECURITY.md).

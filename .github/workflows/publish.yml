@@ -1,0 +1,70 @@
+name: publish
+
+# A v* tag publishes that commit to npm with provenance, after approval in the npm environment,
+# and creates the GitHub release from its CHANGELOG section.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Check the tag against package.json and the npm version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+          grep -q "^## $version " CHANGELOG.md || { echo "CHANGELOG.md has no section for $version" >&2; exit 1; }
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)" "$(npm --version)" \
+            || { echo "npm $(npm --version) is older than 11.5.1, which trusted publishing needs" >&2; exit 1; }
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint code with standard
+        run: npm run lint
+
+      - name: Build types, and check they match the committed ones
+        run: |
+          npm run build:types
+          git diff --exit-code -- types
+
+      - name: Run tests
+        run: npm test
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npm run test:browser
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          awk -v h="## $version " 'index($0, h) == 1 { f = 1; next } /^## / { f = 0 } f' CHANGELOG.md \
+            | sed '/./,$!d' > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md --latest
