@@ -51,6 +51,17 @@ export default class Engine {
      * signed holds nothing: one signed in between may have spent its inputs.
      */
     private _spends;
+    /**
+     * @private This engine, among every engine ever opened on the wallet. A send prepared by
+     * one that has since closed is refused: the count above starts again at 0 in each.
+     */
+    private _id;
+    /** @private The sends this engine prepared and has not signed anything since: PSBT → what it sends. */
+    private _prepared;
+    /** @private Lets go of the snapshot lock. */
+    private _release;
+    /** @returns {boolean} Whether the wallet is open. */
+    get isOpen(): boolean;
     /** @returns {Object} The rgb-lib wallet. */
     get wallet(): any;
     /** @returns {string} The derivation path this account reports. */
@@ -103,6 +114,20 @@ export default class Engine {
      * @returns {Promise<void>} When the wallet is open.
      */
     open(mnemonic: string): Promise<void>;
+    /**
+     * Holds the named lock until {@link dispose}, waiting {@link LOCK_WAIT_MS} for an instance
+     * that is closing. Where the browser has no Web Locks there is nothing to hold.
+     *
+     * @private
+     * @param {string} name - The lock.
+     */
+    private _lock;
+    /**
+     * The rest of {@link open}, once the snapshot is this instance's.
+     *
+     * @private
+     */
+    private _openWallets;
     /**
      * Reaches the indexer, or tries again after a failure. Every online command needs this to
      * have succeeded once; a wallet opened with `deferOnline` calls it when it is ready to wait.
@@ -180,6 +205,30 @@ export default class Engine {
      */
     feeRate(): Promise<bigint>;
     /**
+     * {@link feeRate} for a command already holding the wallet: the estimate is asked directly,
+     * since queueing it there would wait on the command itself.
+     *
+     * @private
+     * @param {Object} online - The indexer handle.
+     * @returns {Promise<bigint>} The rate.
+     */
+    private _feeRateHeld;
+    /**
+     * @private
+     * @param {() => Promise<number> | number} estimate - The indexer's estimate.
+     * @returns {Promise<bigint>} The rate to bid.
+     */
+    private _bid;
+    /**
+     * A fee rate the caller gave, checked: a whole number of sat/vB, at least 1 and no more than
+     * the most this wallet bids on its network (`fee.max`). Absent (or 0), the wallet estimates.
+     *
+     * @private
+     * @param {number | bigint | string} [feeRate] - The rate.
+     * @returns {bigint | null} The rate, or null to estimate.
+     */
+    private _givenRate;
+    /**
      * Creates the empty colored UTXOs that receiving requires.
      *
      * @param {number | bigint} [feeRate] - The fee rate; estimated when omitted.
@@ -198,9 +247,9 @@ export default class Engine {
      *
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
-     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
      * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
-     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
      * @returns {Promise<Object>} The invoice.
      */
     blindReceive({ assetId, minutes, amount, minConfirmations }?: {
@@ -218,9 +267,9 @@ export default class Engine {
      *
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
-     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
      * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
-     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
      * @returns {Promise<Object>} The invoice.
      */
     witnessReceive({ assetId, minutes, amount, minConfirmations }?: {
@@ -376,12 +425,19 @@ export default class Engine {
         nonFungible?: boolean;
     }): Promise<any>;
     /**
+     * {@link sendAsset}, with the fee rate it paid.
+     *
+     * @private
+     * @returns {Promise<{ transfer: Object, rate: bigint }>} The transfer and the rate.
+     */
+    private _sendAsset;
+    /**
      * The first half of {@link sendAsset}: the unsigned transaction, for the user to check before
      * anything is signed. Nothing is recorded and nothing is held; {@link finishSendAsset} signs it.
      * A prepared send left unfinished costs nothing.
      *
      * @param {Object} options - As for {@link sendAsset}.
-     * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number }>} The prepared send: the PSBT, the outputs it spends, what it sends where, and the engine's spend count when it was made.
+     * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number, engine: string }>} The prepared send: the PSBT, the outputs it spends, what it sends where, and which engine made it at which spend count.
      */
     prepareSendAsset(options: any): Promise<{
         psbt: string;
@@ -394,12 +450,15 @@ export default class Engine {
         amount: string;
         feeRate: bigint;
         spends: number;
+        engine: string;
     }>;
     /**
      * The second half of {@link sendAsset}: signs a send {@link prepareSendAsset} made, and posts
-     * its consignment. Refused when the wallet signed anything since the send was prepared, or
-     * when an output it spends is no longer the wallet's: rgb-lib would sign it all the same,
-     * two transactions would spend one output, and the recipient would wait for a transfer that
+     * its consignment. Refused when the send was prepared by another engine (one closed since,
+     * or another instance), when the PSBT or what it sends is not what this engine prepared,
+     * when the wallet signed anything since, when the invoice has been paid since, or when an
+     * output it spends is no longer the wallet's: rgb-lib would sign it all the same, two
+     * transactions would spend one output, and the recipient would wait for a transfer that
      * never confirms. Prepare it again then.
      *
      * @param {Object} prepared - What {@link prepareSendAsset} returned.
@@ -412,7 +471,8 @@ export default class Engine {
     }): Promise<any>;
     /**
      * An asset send's request, read and checked: the invoice, the asset, the amount, the endpoints
-     * and the fee rate. Nothing is asked of the wallet but its network.
+     * and a fee rate the caller gave (null to estimate, inside the queue). Nothing is asked of the
+     * wallet but its network.
      *
      * @private
      */
@@ -440,6 +500,13 @@ export default class Engine {
      */
     private _sendEnd;
     /**
+     * Notes a signature. Every send prepared before it is now stale: the transaction just signed
+     * may spend its inputs.
+     *
+     * @private
+     */
+    private _signed;
+    /**
      * The transfers this wallet has sent that are still waiting on their recipient.
      *
      * A transfer is not on the chain when `sendAsset` returns. RGB posts the consignment first
@@ -461,7 +528,7 @@ export default class Engine {
      * @param {bigint | number | string} options.amount - The amount in sats.
      * @param {number | bigint} [options.feeRate] - The fee rate; estimated when omitted.
      * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it the send is refused unsent.
-     * @returns {Promise<{ txid: string }>} The transaction id.
+     * @returns {Promise<{ txid: string, feeRate: bigint }>} The transaction id and the rate it paid.
      */
     sendBtc({ address, amount, feeRate, notAfter }: {
         address: string;
@@ -470,8 +537,9 @@ export default class Engine {
         notAfter?: number;
     }): Promise<{
         txid: string;
+        feeRate: bigint;
     }>;
-    /** Closes the wallet. */
+    /** Closes the wallet and lets go of its snapshot. */
     dispose(): void;
     /**
      * rgb-lib changed what this argument is. The published WebAssembly bindings take an asset

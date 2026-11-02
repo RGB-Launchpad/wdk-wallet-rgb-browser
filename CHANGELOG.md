@@ -2,7 +2,37 @@
 
 ## 0.2.1 - 2026-11-02
 
+Security:
+
+- `finishTransfer` refuses a transfer prepared before the wallet was last opened. The guard
+  against signing two transactions over the same outputs counted signatures per engine, from 0,
+  so a `prepared` kept across a reopen passed it while another send over its outputs waited on
+  its recipient. It also refuses a `prepared` whose PSBT, asset, recipient or amount is not what
+  the wallet prepared, and an invoice paid since the transfer was prepared.
+- An invoice's `minConfirmations` is a whole number from 0 to 255. rgb-lib takes it as a u8, so
+  256 became 0 and the wallet counted an unconfirmed incoming transfer as settled.
+- One instance per wallet: opening holds a Web Lock on the snapshot until `dispose()`, and a
+  second instance on the same phrase and network (another tab, another manager) is refused.
+  Each instance writes the whole snapshot back, so two of them overwrote each other's records,
+  consignments among them.
+- `dispose()` while the wallet is opening no longer leaves it open: the open finishes, is
+  closed, and is refused.
+- The manager keeps no BIP-39 seed. The WDK base class derives one from the phrase and kept it,
+  readable through `seed`, for the manager's lifetime; nothing here uses it, and it is wiped.
+- A fee rate the caller gives is a whole number of sat/vB no higher than the network's
+  `fee.max`; only estimated rates were capped before.
+- An invoice's `minutes` is a whole number from 1 to 525,600; a negative or huge value wrapped
+  round to an arbitrary validity.
+
 Fixed:
+
+- `transfer`, `prepareTransfer` and `sendTransaction` with no fee rate give up at `notAfter`
+  while the wallet is held: the rate is now estimated in the send's own turn. The mempool read
+  behind the estimate gives up after ten seconds.
+- An open that fails (a network error loading the WebAssembly binary) is tried again on the
+  next call rather than kept; a wallet whose identity wallet fails to open is closed.
+- After an account's `dispose()`, the manager opens the wallet afresh rather than handing back
+  the closed account. The manager reports `disposed`.
 
 - An invoice is paid once. `transfer()` and `prepareTransfer()` refuse an invoice whose
   recipient this wallet has already sent to, in a send that has not failed, before anything is

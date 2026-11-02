@@ -41,6 +41,7 @@ const MERGE = {
     members: [
       { name: 'getFeeRates', decl: 'getFeeRates(): Promise<{ normal: bigint, fast: bigint }>;' },
       { name: 'dispose', decl: 'dispose(): void;' },
+      { name: 'disposed', decl: 'get disposed(): boolean;' },
       // The base's second overload. The runtime refuses a signer name; the type accepts
       // it so a generic WDK consumer still compiles.
       { name: 'getAccount(signerName', force: true, after: 'getAccount(index?: number): Promise<WalletAccountRgb>;', decl: 'getAccount(signerName: string): Promise<WalletAccountRgb>;' }

@@ -38,6 +38,9 @@ export default class WalletManagerRgb extends WalletManager<import("@tetherto/wd
     /** Elided by tsc's JS declaration emit (identical to the base's). */
     dispose(): void;
 
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    get disposed(): boolean;
+
     /**
      * @param {string} seedPhrase - The BIP-39 recovery phrase. Raw seed bytes are not enough: rgb-lib derives from the phrase.
      * @param {RgbWalletConfig} [config] - The configuration.
@@ -53,6 +56,10 @@ export default class WalletManagerRgb extends WalletManager<import("@tetherto/wd
     private _engine;
     /** @private */
     private _opening;
+    /** @private Counts disposals: an open that finishes after one is thrown away. */
+    private _generation;
+    /** @returns {undefined} Never the seed: it is wiped when the manager is made (see the constructor). */
+    get seed(): undefined;
     /**
      * The account this wallet holds.
      *
@@ -70,7 +77,9 @@ export default class WalletManagerRgb extends WalletManager<import("@tetherto/wd
      */
     getAccountByPath(path: string): Promise<WalletAccountRgb>;
     /**
-     * Opens the engine once, however many callers ask at the same time.
+     * Opens the engine once, however many callers ask at the same time. An open that fails is
+     * not kept, so the next call tries again; one that finishes after {@link dispose} is closed
+     * and refused; an engine closed through its account's `dispose` is opened afresh.
      *
      * @private
      * @returns {Promise<Engine>} The open engine.

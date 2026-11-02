@@ -166,8 +166,13 @@ host can show the user what is about to be signed.
 rgb-lib holds nothing for a prepared transfer: its inputs stay free, and another send can
 spend them. Signed afterwards, the prepared one would spend an output already spent, and its
 recipient would wait for a transfer that never confirms. So `finishTransfer` refuses when the
-wallet has signed anything since the transfer was prepared, or when an output it spends is no
-longer the wallet's. Prepare it again then.
+wallet has signed anything since the transfer was prepared, when the wallet has been closed and
+opened again since, when `prepared` is not exactly what this wallet prepared (the PSBT, the
+asset, the recipient and the amount), when the invoice has been paid since, or when an output
+it spends is no longer the wallet's. Prepare it again then.
+
+An invoice is paid once. A send to an invoice whose recipient this wallet has already sent to,
+in a send that has not failed, is refused before anything is built.
 
 ## Two things a browser wallet gets wrong against a live chain
 
@@ -191,6 +196,30 @@ shape, asks once per asset so that "every transfer" means what it says.
 rgb-lib holds one wallet per recovery phrase and derives its keychains inside it, so this
 manager serves a single account, at index 0. Asking for another index is an error rather than
 a silently different wallet.
+
+## One instance
+
+A wallet is open in one place at a time: one recovery phrase on one network (one `dataDir`).
+Each instance restores the whole IndexedDB snapshot when it opens and writes the whole of it
+back as it goes, so two of them would overwrite each other's records, consignments among them.
+Opening holds a Web Lock on the snapshot until `dispose()`; a second instance — another tab,
+another manager in the same page — waits five seconds for it and is then refused with an error
+that says the wallet is open elsewhere. Where the browser has no Web Locks, nothing is held.
+
+`dispose()` closes the wallet and lets go of the lock. The manager keeps no BIP-39 seed (the
+WDK base class derives one; it is wiped, and `seed` is undefined) and, once disposed, does not
+open again.
+
+## Limits on what a caller passes
+
+| Input | Accepted | Otherwise |
+|---|---|---|
+| `feeRate` (sends, `createUtxos`) | a whole number of sat/vB from 1 to the network's `fee.max`; absent or 0 to estimate | refused, nothing built |
+| `minConfirmations` (invoices) | a whole number from 0 to 255; raised to the configured value | refused |
+| `minutes` (invoices) | a whole number from 1 to 525,600 (a year) | refused |
+
+An estimated fee rate is worked out in the send's own turn, so `notAfter` covers it too; the
+mempool read behind it gives up after ten seconds.
 
 ## Development
 

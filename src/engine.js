@@ -169,6 +169,60 @@ function runSend (engine, notAfter, task) {
 /** The most consignment endpoints rgb-lib writes into one invoice. */
 const MAX_TRANSPORT_ENDPOINTS = 3
 
+/** rgb-lib takes an invoice's confirmation count as a u8: anything larger wraps round to a smaller one. */
+const MAX_CONFIRMATIONS = 255
+
+/** The longest an invoice may stay valid: a year. rgb-lib takes the duration as a u32 of seconds. */
+const MAX_INVOICE_MINUTES = 525_600
+
+/** How long the mempool histogram may take. Without an answer the bid rests on the other signals. */
+const MEMPOOL_TIMEOUT_MS = 10_000
+
+/** How long opening waits for another instance on the same snapshot to close. */
+const LOCK_WAIT_MS = 5000
+
+/** How many prepared sends an engine remembers; the oldest is forgotten first. */
+const MAX_PREPARED = 16
+
+const OPEN_ELSEWHERE = 'This wallet is open elsewhere (another tab or instance) on the same network. Close it there first: two instances overwrite each other\'s records.'
+
+/**
+ * The confirmation count an invoice asks for: the configured one, or a higher one the caller
+ * asks for. A count rgb-lib would wrap round is refused, never passed on.
+ *
+ * @param {number} configured - The wallet's own minimum.
+ * @param {number | string} [asked] - What the caller asks for.
+ * @returns {number} The count.
+ */
+function confirmationsFor (configured, asked) {
+  if (asked === undefined || asked === null) return configured
+  const n = typeof asked === 'string' && asked.trim() !== '' ? Number(asked) : asked
+  if (!Number.isInteger(n) || n < 0 || n > MAX_CONFIRMATIONS) {
+    throw new Error(`minConfirmations must be a whole number from 0 to ${MAX_CONFIRMATIONS}.`)
+  }
+  return Math.max(configured, n)
+}
+
+/**
+ * How long an invoice stays valid, in seconds.
+ *
+ * @param {number} [minutes] - What the caller asks for.
+ * @param {number} configured - The wallet's default.
+ * @returns {number} The duration in seconds.
+ */
+function invoiceSeconds (minutes, configured) {
+  const m = minutes === undefined || minutes === null ? configured : minutes
+  if (!Number.isInteger(m) || m < 1 || m > MAX_INVOICE_MINUTES) {
+    throw new Error(`minutes must be a whole number from 1 to ${MAX_INVOICE_MINUTES}.`)
+  }
+  return m * 60
+}
+
+/** @returns {string} A random id, for telling one engine's prepared sends from another's. */
+function randomId () {
+  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 /**
  * Whether a recipient id names an output of the sender's transaction rather than a blinded
  * UTXO of the recipient's. rgb-lib encodes it in the id: `wvout` against `utxob`.
@@ -245,6 +299,23 @@ export default class Engine {
      * signed holds nothing: one signed in between may have spent its inputs.
      */
     this._spends = 0
+
+    /**
+     * @private This engine, among every engine ever opened on the wallet. A send prepared by
+     * one that has since closed is refused: the count above starts again at 0 in each.
+     */
+    this._id = randomId()
+
+    /** @private The sends this engine prepared and has not signed anything since: PSBT → what it sends. */
+    this._prepared = new Map()
+
+    /** @private Lets go of the snapshot lock. */
+    this._release = null
+  }
+
+  /** @returns {boolean} Whether the wallet is open. */
+  get isOpen () {
+    return !!this._wallet
   }
 
   /** @returns {Object} The rgb-lib wallet. */
@@ -333,11 +404,61 @@ export default class Engine {
     const { default: initWasm, restoreKeys, WasmWallet } = this._bindings
 
     if (!initialising.has(this._bindings)) {
-      initialising.set(this._bindings, initWasm())
+      // A failed load (a network error fetching the binary) is not kept: the next open tries again.
+      const loading = Promise.resolve().then(() => initWasm())
+      loading.catch(() => initialising.delete(this._bindings))
+      initialising.set(this._bindings, loading)
     }
 
     await initialising.get(this._bindings)
 
+    // One instance per snapshot. Each restores the whole snapshot when it opens and writes the
+    // whole of it back on every flush, so a second one on the same phrase and network would
+    // overwrite the first's records — consignments among them, which the phrase cannot restore.
+    await this._lock(`wdk-wallet-rgb:${this._config.dataDir}/${restoreKeys(this._config.network, mnemonic).masterFingerprint}`)
+
+    try {
+      await this._openWallets(mnemonic, restoreKeys, WasmWallet)
+    } catch (error) {
+      this.dispose()
+      throw error
+    }
+  }
+
+  /**
+   * Holds the named lock until {@link dispose}, waiting {@link LOCK_WAIT_MS} for an instance
+   * that is closing. Where the browser has no Web Locks there is nothing to hold.
+   *
+   * @private
+   * @param {string} name - The lock.
+   */
+  async _lock (name) {
+    const locks = globalThis.navigator?.locks
+    if (!locks) return
+
+    let release
+    const held = new Promise((resolve) => { release = resolve })
+
+    await new Promise((resolve, reject) => {
+      const options = typeof AbortSignal?.timeout === 'function'
+        ? { signal: AbortSignal.timeout(LOCK_WAIT_MS) }
+        : { ifAvailable: true }
+      locks.request(name, options, (lock) => {
+        if (!lock) return reject(new Error(OPEN_ELSEWHERE))
+        resolve()
+        return held
+      }).catch(() => reject(new Error(OPEN_ELSEWHERE)))
+    })
+
+    this._release = release
+  }
+
+  /**
+   * The rest of {@link open}, once the snapshot is this instance's.
+   *
+   * @private
+   */
+  async _openWallets (mnemonic, restoreKeys, WasmWallet) {
     const keychain = this._config.vanillaKeychain || 0
     const colored = this._config.coloredKeychain || 0
     const walletData = (dataDir, vanillaKeychain, network = this._config.network, coloredKeychain = null) => {
@@ -574,24 +695,72 @@ export default class Engine {
    * @returns {Promise<bigint>} The rate.
    */
   async feeRate () {
+    // Queued: the estimate is a network read that holds the wallet while it waits.
+    return this._bid(() => this.run(() => this.wallet.getFeeEstimation(this.needOnline(), 1)))
+  }
+
+  /**
+   * {@link feeRate} for a command already holding the wallet: the estimate is asked directly,
+   * since queueing it there would wait on the command itself.
+   *
+   * @private
+   * @param {Object} online - The indexer handle.
+   * @returns {Promise<bigint>} The rate.
+   */
+  _feeRateHeld (online) {
+    return this._bid(() => this.wallet.getFeeEstimation(online, 1))
+  }
+
+  /**
+   * @private
+   * @param {() => Promise<number> | number} estimate - The indexer's estimate.
+   * @returns {Promise<bigint>} The rate to bid.
+   */
+  async _bid (estimate) {
     const fee = this._config.fee
     const signals = []
 
     try {
       signals.push(clearingRate(await this._mempoolHistogram(), fee))
     } catch {
-      // An indexer without /mempool tells us nothing; the floor still applies.
+      // An indexer without /mempool, or one too slow, tells us nothing; the floor still applies.
     }
 
     try {
-      // Queued: the estimate is a network read that holds the wallet while it waits.
-      const online = this.needOnline()
-      signals.push(Number(await this.run(() => this.wallet.getFeeEstimation(online, 1))))
+      signals.push(Number(await estimate()))
     } catch {
       // A fresh chain has no estimate to give.
     }
 
     return BigInt(bid(signals, fee))
+  }
+
+  /**
+   * A fee rate the caller gave, checked: a whole number of sat/vB, at least 1 and no more than
+   * the most this wallet bids on its network (`fee.max`). Absent (or 0), the wallet estimates.
+   *
+   * @private
+   * @param {number | bigint | string} [feeRate] - The rate.
+   * @returns {bigint | null} The rate, or null to estimate.
+   */
+  _givenRate (feeRate) {
+    if (feeRate === undefined || feeRate === null || feeRate === '' || feeRate === 0 || feeRate === 0n) return null
+
+    let rate
+    try {
+      rate = BigInt(feeRate)
+    } catch {
+      throw new Error('The fee rate must be a whole number of sat/vB.')
+    }
+
+    if (rate < 1n) throw new Error('The fee rate must be at least 1 sat/vB.')
+
+    const max = this._config.fee?.max
+    if (Number.isFinite(max) && rate > BigInt(Math.floor(max))) {
+      throw new Error(`The fee rate is above the most this wallet pays on ${this.network} (${Math.floor(max)} sat/vB).`)
+    }
+
+    return rate
   }
 
   /**
@@ -603,9 +772,11 @@ export default class Engine {
    */
   async createUtxos (feeRate, num) {
     const online = this.needOnline()
-    const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
+    const given = this._givenRate(feeRate)
 
     return this.run(async () => {
+      const rate = given ?? await this._feeRateHeld(online)
+
       await this.wallet.sync(online)
 
       const count = num
@@ -625,7 +796,7 @@ export default class Engine {
       const psbt = await this.wallet.createUtxosBegin(
         online, false, count, this._config.slots.utxoSizeSat, rate, false)
       const signed = await this.wallet.signPsbt(psbt)
-      this._spends++
+      this._signed()
       // No sync after the broadcast: a sync that fails would report as failed a transaction
       // already on its way, and a retry would pay for it twice. The next sync picks it up.
       // rgb-lib counts what it created by that sync, so the count is the one asked for: the
@@ -646,9 +817,9 @@ export default class Engine {
    *
    * @param {Object} [options] - The invoice.
    * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
-   * @param {number} [options.minutes] - How long the invoice stays valid.
+   * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
    * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
-   * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
+   * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
    * @returns {Promise<Object>} The invoice.
    */
   async blindReceive ({ assetId, minutes, amount, minConfirmations } = {}) {
@@ -659,7 +830,8 @@ export default class Engine {
     }
 
     const assignment = receiveAssignment(amount)
-    const confirmations = Math.max(this._config.minConfirmations, Number(minConfirmations) || 0)
+    const confirmations = confirmationsFor(this._config.minConfirmations, minConfirmations)
+    const seconds = invoiceSeconds(minutes, this._config.invoiceMinutes)
 
     return this.run(async () => {
       if (freeSlots(await this.wallet.listUnspents(false), this._config.slots) < 1) {
@@ -673,7 +845,7 @@ export default class Engine {
         invoice = await this.wallet.blindReceive(
           assetId || undefined,
           assignment,
-          (minutes || this._config.invoiceMinutes) * 60,
+          seconds,
           this._proxyUrls(),
           confirmations
         )
@@ -696,9 +868,9 @@ export default class Engine {
    *
    * @param {Object} [options] - The invoice.
    * @param {string} [options.assetId] - Restrict to one asset; any asset when omitted.
-   * @param {number} [options.minutes] - How long the invoice stays valid.
+   * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
    * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
-   * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
+   * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
    * @returns {Promise<Object>} The invoice.
    */
   async witnessReceive ({ assetId, minutes, amount, minConfirmations } = {}) {
@@ -709,7 +881,8 @@ export default class Engine {
     }
 
     const assignment = receiveAssignment(amount)
-    const confirmations = Math.max(this._config.minConfirmations, Number(minConfirmations) || 0)
+    const confirmations = confirmationsFor(this._config.minConfirmations, minConfirmations)
+    const seconds = invoiceSeconds(minutes, this._config.invoiceMinutes)
 
     return this.run(async () => {
       // A wallet pins its addresses so its identity stays put, which means a witness invoice
@@ -727,7 +900,7 @@ export default class Engine {
         const invoice = this.plain(await this.wallet.witnessReceive(
           assetId || undefined,
           assignment,
-          (minutes || this._config.invoiceMinutes) * 60,
+          seconds,
           this._proxyUrls(),
           confirmations
         ))
@@ -1030,14 +1203,25 @@ export default class Engine {
    * @returns {Promise<Object>} The transfer rgb-lib recorded.
    */
   async sendAsset (options) {
+    return (await this._sendAsset(options)).transfer
+  }
+
+  /**
+   * {@link sendAsset}, with the fee rate it paid.
+   *
+   * @private
+   * @returns {Promise<{ transfer: Object, rate: bigint }>} The transfer and the rate.
+   */
+  async _sendAsset (options) {
     const send = await this._sendRequest(options)
 
     return runSend(this, options.notAfter, async () => {
       await this._refusePaidInvoice(send.data.recipientId)
 
-      const psbt = await this._sendBegin(send)
+      const rate = send.rate ?? await this._feeRateHeld(send.online)
+      const psbt = await this._sendBegin({ ...send, rate })
 
-      return this._sendEnd(send.online, psbt)
+      return { transfer: await this._sendEnd(send.online, psbt), rate }
     })
   }
 
@@ -1047,7 +1231,7 @@ export default class Engine {
    * A prepared send left unfinished costs nothing.
    *
    * @param {Object} options - As for {@link sendAsset}.
-   * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number }>} The prepared send: the PSBT, the outputs it spends, what it sends where, and the engine's spend count when it was made.
+   * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number, engine: string }>} The prepared send: the PSBT, the outputs it spends, what it sends where, and which engine made it at which spend count.
    */
   async prepareSendAsset (options) {
     const send = await this._sendRequest(options)
@@ -1055,25 +1239,25 @@ export default class Engine {
     return runSend(this, options.notAfter, async () => {
       await this._refusePaidInvoice(send.data.recipientId)
 
-      const psbt = String(await this._sendBegin(send))
+      const rate = send.rate ?? await this._feeRateHeld(send.online)
+      const psbt = String(await this._sendBegin({ ...send, rate }))
+      const what = { assetId: send.assetId, recipientId: send.data.recipientId, amount: send.value.toString() }
 
-      return {
-        psbt,
-        inputs: psbtInputs(psbt),
-        assetId: send.assetId,
-        recipientId: send.data.recipientId,
-        amount: send.value.toString(),
-        feeRate: send.rate,
-        spends: this._spends
-      }
+      this._prepared.delete(psbt)
+      this._prepared.set(psbt, what)
+      while (this._prepared.size > MAX_PREPARED) this._prepared.delete(this._prepared.keys().next().value)
+
+      return { psbt, inputs: psbtInputs(psbt), ...what, feeRate: rate, spends: this._spends, engine: this._id }
     })
   }
 
   /**
    * The second half of {@link sendAsset}: signs a send {@link prepareSendAsset} made, and posts
-   * its consignment. Refused when the wallet signed anything since the send was prepared, or
-   * when an output it spends is no longer the wallet's: rgb-lib would sign it all the same,
-   * two transactions would spend one output, and the recipient would wait for a transfer that
+   * its consignment. Refused when the send was prepared by another engine (one closed since,
+   * or another instance), when the PSBT or what it sends is not what this engine prepared,
+   * when the wallet signed anything since, when the invoice has been paid since, or when an
+   * output it spends is no longer the wallet's: rgb-lib would sign it all the same, two
+   * transactions would spend one output, and the recipient would wait for a transfer that
    * never confirms. Prepare it again then.
    *
    * @param {Object} prepared - What {@link prepareSendAsset} returned.
@@ -1088,9 +1272,21 @@ export default class Engine {
     if (!psbt) throw new Error('Nothing prepared to send.')
 
     return runSend(this, notAfter, async () => {
+      if (prepared.engine !== this._id) {
+        throw new Error('This send was prepared before the wallet was last opened. Prepare it again.')
+      }
+
       if (prepared.spends !== this._spends) {
         throw new Error('The wallet has sent something since this send was prepared. Prepare it again.')
       }
+
+      const what = this._prepared.get(psbt)
+
+      if (!what || ['assetId', 'recipientId', 'amount'].some((k) => String(prepared[k]) !== String(what[k]))) {
+        throw new Error('This is not a send this wallet prepared. Prepare it again.')
+      }
+
+      await this._refusePaidInvoice(what.recipientId)
 
       await this.wallet.sync(online)
 
@@ -1110,7 +1306,8 @@ export default class Engine {
 
   /**
    * An asset send's request, read and checked: the invoice, the asset, the amount, the endpoints
-   * and the fee rate. Nothing is asked of the wallet but its network.
+   * and a fee rate the caller gave (null to estimate, inside the queue). Nothing is asked of the
+   * wallet but its network.
    *
    * @private
    */
@@ -1138,7 +1335,7 @@ export default class Engine {
       throw new Error('The invoice carries no consignment endpoint and no proxyUrl is configured.')
     }
 
-    const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
+    const rate = this._givenRate(feeRate)
 
     return { online, data, assetId: assetId || data.assetId, value, nonFungible, endpoints, rate }
   }
@@ -1221,12 +1418,23 @@ export default class Engine {
    */
   async _sendEnd (online, psbt) {
     const signed = await this.wallet.signPsbt(psbt)
-    this._spends++
+    this._signed()
     const result = this.plain(await this.wallet.sendEnd(online, signed, false))
 
     await this.wallet.flush()
 
     return result
+  }
+
+  /**
+   * Notes a signature. Every send prepared before it is now stale: the transaction just signed
+   * may spend its inputs.
+   *
+   * @private
+   */
+  _signed () {
+    this._spends++
+    this._prepared.clear()
   }
 
   /**
@@ -1256,7 +1464,7 @@ export default class Engine {
    * @param {bigint | number | string} options.amount - The amount in sats.
    * @param {number | bigint} [options.feeRate] - The fee rate; estimated when omitted.
    * @param {number} [options.notAfter] - The last moment (ms since the epoch) the send may start; past it the send is refused unsent.
-   * @returns {Promise<{ txid: string }>} The transaction id.
+   * @returns {Promise<{ txid: string, feeRate: bigint }>} The transaction id and the rate it paid.
    */
   async sendBtc ({ address, amount, feeRate, notAfter }) {
     const online = this.needOnline()
@@ -1264,25 +1472,27 @@ export default class Engine {
 
     if (value <= 0n) throw new Error('The amount must be greater than 0.')
 
-    const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
+    const given = this._givenRate(feeRate)
 
     return runSend(this, notAfter, async () => {
+      const rate = given ?? await this._feeRateHeld(online)
+
       await this.wallet.sync(online)
 
       const psbt = await this.wallet.sendBtcBegin(online, String(address).trim(), value, rate, false)
       const signed = await this.wallet.signPsbt(psbt)
-      this._spends++
+      this._signed()
       // No sync after the broadcast, as for slots: a failed sync must not turn a sent
       // transaction into a reported failure.
       const txid = await this.wallet.sendBtcEnd(online, signed, true)
 
       await this.wallet.flush()
 
-      return { txid }
+      return { txid, feeRate: rate }
     })
   }
 
-  /** Closes the wallet. */
+  /** Closes the wallet and lets go of its snapshot. */
   dispose () {
     for (const w of [this._wallet, this._identity]) {
       try {
@@ -1295,6 +1505,9 @@ export default class Engine {
     this._wallet = null
     this._identity = null
     this._online = null
+    this._prepared.clear()
+    this._release?.()
+    this._release = null
   }
 
   /**
@@ -1406,7 +1619,10 @@ export default class Engine {
    * @returns {Promise<Array<[number, number]>>} The mempool histogram.
    */
   async _mempoolHistogram () {
-    const response = await fetch(`${this.esploraUrl.replace(/\/+$/, '')}/mempool`, NO_CACHE)
+    const response = await fetch(`${this.esploraUrl.replace(/\/+$/, '')}/mempool`, {
+      ...NO_CACHE,
+      ...(typeof AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(MEMPOOL_TIMEOUT_MS) } : {})
+    })
 
     if (!response.ok) throw new Error(`mempool ${response.status}`)
 

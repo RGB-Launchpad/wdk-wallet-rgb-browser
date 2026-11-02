@@ -77,6 +77,11 @@ export default class WalletManagerRgb extends WalletManager {
   constructor (seedPhrase, config = {}) {
     super(seedPhrase, config)
 
+    // The base class keeps the BIP-39 seed derived from the phrase. rgb-lib derives from the
+    // phrase itself and nothing here reads the seed, so it is wiped rather than kept for the
+    // manager's lifetime; `seed` answers undefined.
+    super.seed?.fill?.(0)
+
     if (typeof seedPhrase !== 'string') {
       throw new TypeError('An RGB wallet needs the recovery phrase itself, not raw seed bytes.')
     }
@@ -157,6 +162,19 @@ export default class WalletManagerRgb extends WalletManager {
 
     /** @private */
     this._opening = null
+
+    /** @private Counts disposals: an open that finishes after one is thrown away. */
+    this._generation = 0
+  }
+
+  /** @returns {undefined} Never the seed: it is wiped when the manager is made (see the constructor). */
+  get seed () {
+    return undefined
+  }
+
+  /** @returns {boolean} True once {@link dispose} has been called. */
+  get disposed () {
+    return this._mnemonic === null
   }
 
   /**
@@ -176,8 +194,10 @@ export default class WalletManagerRgb extends WalletManager {
       throw new Error(`An RGB wallet has one account; index ${index} does not exist.`)
     }
 
+    const engine = await this._open()
+
     if (!this._accounts[this._cfg.path]) {
-      this._accounts[this._cfg.path] = new WalletAccountRgb(await this._open(), 0)
+      this._accounts[this._cfg.path] = new WalletAccountRgb(engine, 0)
     }
 
     return this._accounts[this._cfg.path]
@@ -212,6 +232,7 @@ export default class WalletManagerRgb extends WalletManager {
 
   /** Closes the wallet and forgets the recovery phrase held for it. */
   dispose () {
+    this._generation++
     this._engine?.dispose()
     this._engine = null
     this._opening = null
@@ -220,16 +241,25 @@ export default class WalletManagerRgb extends WalletManager {
   }
 
   /**
-   * Opens the engine once, however many callers ask at the same time.
+   * Opens the engine once, however many callers ask at the same time. An open that fails is
+   * not kept, so the next call tries again; one that finishes after {@link dispose} is closed
+   * and refused; an engine closed through its account's `dispose` is opened afresh.
    *
    * @private
    * @returns {Promise<Engine>} The open engine.
    */
   async _open () {
-    if (this._engine) return this._engine
+    if (this._engine?.isOpen) return this._engine
+
+    if (this._engine) {
+      this._engine = null
+      this._opening = null
+      this._accounts = {}
+    }
 
     if (!this._opening) {
-      this._opening = (async () => {
+      const generation = this._generation
+      const opening = (async () => {
         if (!this._mnemonic) throw new Error('The wallet manager has been disposed.')
 
         const bindings = this._bindings || await import('@utexo/rgb-lib-wasm')
@@ -237,10 +267,20 @@ export default class WalletManagerRgb extends WalletManager {
 
         await engine.open(this._mnemonic)
 
+        if (generation !== this._generation) {
+          engine.dispose()
+          throw new Error('The wallet manager has been disposed.')
+        }
+
         this._engine = engine
 
         return engine
       })()
+
+      this._opening = opening
+      opening.catch(() => {
+        if (this._opening === opening) this._opening = null
+      })
     }
 
     return this._opening

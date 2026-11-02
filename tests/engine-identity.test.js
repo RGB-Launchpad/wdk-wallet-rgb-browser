@@ -1,6 +1,6 @@
 'use strict'
 
-import { describe, expect, test } from '@jest/globals'
+import { afterEach, describe, expect, test } from '@jest/globals'
 
 import Engine from '../src/engine.js'
 import WalletManagerRgb from '../src/wallet-manager-rgb.js'
@@ -45,9 +45,15 @@ function bindings (created, { readsColored = true } = {}) {
   }
 }
 
+// Every engine a test opens is closed after it: one wallet is open in one place at a time, and
+// the next test opens the same phrase.
+const opened = []
+afterEach(() => { for (const engine of opened.splice(0)) engine.dispose() })
+
 const open = async (vanillaKeychain, identityCoinType = null, { coloredKeychain = 0, readsColored = true, created = [] } = {}) => {
   const engine = new Engine(bindings(created, { readsColored }), { network: 'Regtest', dataDir: ':memory:/Regtest', slots: SLOTS, fee: {}, deferOnline: true, vanillaKeychain, coloredKeychain, identityCoinType, schemas: ['Nia', 'Ifa'] })
   engine._requestPersistence = async () => false
+  opened.push(engine)
   await engine.open(PHRASE)
   return { engine, created }
 }
@@ -140,6 +146,7 @@ describe('queue', () => {
     const queue = (task) => { ran.push('host'); return task() }
     const engine = new Engine(bindings(created), { network: 'Regtest', dataDir: ':memory:/Regtest', slots: SLOTS, fee: {}, deferOnline: true, queue })
     engine._requestPersistence = async () => false
+    opened.push(engine)
     await engine.open(PHRASE)
     await engine.identityAddress()
     expect(ran).toEqual(['host'])

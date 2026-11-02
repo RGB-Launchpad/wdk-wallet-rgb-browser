@@ -147,7 +147,7 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      * unfinished costs nothing.
      *
      * @param {Object} options - As for {@link transfer}.
-     * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number }>} The prepared transfer.
+     * @returns {Promise<{ psbt: string, inputs: Array<{ txid: string, vout: number }>, assetId: string, recipientId: string, amount: string, feeRate: bigint, spends: number, engine: string }>} The prepared transfer.
      */
     prepareTransfer(options: any): Promise<{
         psbt: string;
@@ -160,11 +160,14 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
         amount: string;
         feeRate: bigint;
         spends: number;
+        engine: string;
     }>;
     /**
      * The second half of {@link transfer}: signs what {@link prepareTransfer} returned and posts
-     * the consignment. Refused, with nothing signed, when the wallet has signed anything since
-     * or an output the transfer spends is no longer the wallet's; prepare it again then.
+     * the consignment. Refused, with nothing signed, when the wallet has been reopened or has
+     * signed anything since, when `prepared` is not what this wallet prepared, when the invoice
+     * has been paid since, or when an output the transfer spends is no longer the wallet's;
+     * prepare it again then.
      *
      * @param {Object} prepared - What {@link prepareTransfer} returned.
      * @param {Object} [options] - The send.
@@ -194,9 +197,9 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      *
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
-     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
      * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
-     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
      * @returns {Promise<Object>} The invoice, its recipient id and its expiry.
      */
     receiveAsset(options?: {
@@ -211,9 +214,9 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      *
      * @param {Object} [options] - The invoice.
      * @param {string} [options.assetId] - Restrict the invoice to one asset; any asset when omitted.
-     * @param {number} [options.minutes] - How long the invoice stays valid.
+     * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
      * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
-     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach; never fewer than the configured value.
+     * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
      * @returns {Promise<Object>} The invoice.
      */
     receiveAssetToWitness(options?: {
