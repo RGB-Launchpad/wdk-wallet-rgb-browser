@@ -418,6 +418,16 @@ export default class Engine {
      */
     private _sendRequest;
     /**
+     * Refuses a send to a recipient this wallet has already sent to, in a send that has not
+     * failed. An invoice takes one consignment: a second send to it is never accepted, and waits
+     * until it expires. Once the earlier send has failed, the invoice can be paid again. Read
+     * from the wallet's own records. Runs inside the queue.
+     *
+     * @private
+     * @param {string} recipientId - The recipient id from the invoice.
+     */
+    private _refusePaidInvoice;
+    /**
      * The unsigned transaction of an asset send. Runs inside the queue.
      *
      * @private

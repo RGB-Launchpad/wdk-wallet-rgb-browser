@@ -1033,6 +1033,8 @@ export default class Engine {
     const send = await this._sendRequest(options)
 
     return runSend(this, options.notAfter, async () => {
+      await this._refusePaidInvoice(send.data.recipientId)
+
       const psbt = await this._sendBegin(send)
 
       return this._sendEnd(send.online, psbt)
@@ -1051,6 +1053,8 @@ export default class Engine {
     const send = await this._sendRequest(options)
 
     return runSend(this, options.notAfter, async () => {
+      await this._refusePaidInvoice(send.data.recipientId)
+
       const psbt = String(await this._sendBegin(send))
 
       return {
@@ -1137,6 +1141,25 @@ export default class Engine {
     const rate = feeRate ? BigInt(feeRate) : await this.feeRate()
 
     return { online, data, assetId: assetId || data.assetId, value, nonFungible, endpoints, rate }
+  }
+
+  /**
+   * Refuses a send to a recipient this wallet has already sent to, in a send that has not
+   * failed. An invoice takes one consignment: a second send to it is never accepted, and waits
+   * until it expires. Once the earlier send has failed, the invoice can be paid again. Read
+   * from the wallet's own records. Runs inside the queue.
+   *
+   * @private
+   * @param {string} recipientId - The recipient id from the invoice.
+   */
+  async _refusePaidInvoice (recipientId) {
+    if (!recipientId) return
+
+    const transfers = this.plain(await this._listTransfers()) || []
+    const paid = transfers.some((t) =>
+      t.kind === 'Send' && (t.recipientId ?? t.recipient_id) === recipientId && t.status !== 'Failed')
+
+    if (paid) throw new Error('This invoice has been paid already. Ask the recipient for a new one.')
   }
 
   /**
@@ -1357,7 +1380,7 @@ export default class Engine {
 
     const list = await this.wallet.listAssets([])
 
-    for (const asset of [...(list.nia || []), ...(list.ifa || [])]) {
+    for (const asset of [...(list.nia || []), ...(list.ifa || []), ...(list.uda || []), ...(list.cfa || [])]) {
       add(await this.wallet.listTransfers(asset.assetId))
     }
 

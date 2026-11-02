@@ -26,6 +26,7 @@ const engineWith = ({ calls = [], unspent = [SPENT] } = {}) => {
     sendBtcEnd: async () => 'btc-txid',
     listUnspents: () => unspent.filter((o) => o === SPENT).map((o) => ({ utxo: { outpoint: { txid: o.split(':')[0], vout: Number(o.split(':')[1]) } } })),
     listUnspentsVanilla: async () => [],
+    listTransfers: async () => [],
     flush: async () => { calls.push('flush') }
   }
   return engine
