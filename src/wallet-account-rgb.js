@@ -44,6 +44,14 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
 
     /** @private */
     this._readOnly = new WalletAccountReadOnlyRgb(engine)
+
+    /** @private */
+    this._disposed = false
+  }
+
+  /** @returns {boolean} True once {@link dispose} has been called. */
+  get disposed () {
+    return this._disposed
   }
 
   /** @returns {number} The account index. */
@@ -498,6 +506,7 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
 
   /** Closes the wallet and drops the engine's handle on the recovery phrase. */
   dispose () {
+    this._disposed = true
     this._engine.dispose()
   }
 }

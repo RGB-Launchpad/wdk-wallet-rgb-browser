@@ -31,15 +31,12 @@
  * this manager serves a single account, at index 0. Asking for another index is an error
  * rather than a silently different wallet.
  */
-export default class WalletManagerRgb extends WalletManager {
+export default class WalletManagerRgb extends WalletManager<import("@tetherto/wdk-wallet").ISigner> {
     /** Elided by tsc's JS declaration emit (identical to the base's). */
     getFeeRates(): Promise<{ normal: bigint, fast: bigint }>;
 
     /** Elided by tsc's JS declaration emit (identical to the base's). */
     dispose(): void;
-
-    /** Elided by tsc's JS declaration emit (identical to the base's). */
-    getAccount(signerName: string): Promise<import('./wallet-account-rgb.js').default>;
 
     /**
      * @param {string} seedPhrase - The BIP-39 recovery phrase. Raw seed bytes are not enough: rgb-lib derives from the phrase.
@@ -64,6 +61,8 @@ export default class WalletManagerRgb extends WalletManager {
      * @throws {Error} If an index other than 0 is asked for.
      */
     getAccount(index?: number): Promise<WalletAccountRgb>;
+    /** Elided by tsc's JS declaration emit (identical to the base's). */
+    getAccount(signerName: string): Promise<WalletAccountRgb>;
     /**
      * @param {string} path - The derivation path.
      * @returns {Promise<WalletAccountRgb>} The account at that path.

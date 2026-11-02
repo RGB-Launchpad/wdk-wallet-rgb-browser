@@ -27,6 +27,10 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
     private _index;
     /** @private */
     private _readOnly;
+    /** @private */
+    private _disposed;
+    /** @returns {boolean} True once {@link dispose} has been called. */
+    get disposed(): boolean;
     /** @returns {number} The account index. */
     get index(): number;
     /** @returns {string} The derivation path. */
