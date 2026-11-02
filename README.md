@@ -3,6 +3,11 @@
 [![npm version](https://img.shields.io/npm/v/%40darkhorse-wallet%2Fwdk-wallet-rgb?style=flat-square)](https://www.npmjs.com/package/@darkhorse-wallet/wdk-wallet-rgb)
 [![license](https://img.shields.io/npm/l/%40darkhorse-wallet%2Fwdk-wallet-rgb?style=flat-square)](https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser/blob/main/LICENSE)
 
+> **What's new in 0.2.1** — one payment per invoice, `coloredKeychain`, stricter two-step
+> transfers, one instance per wallet, input validation, and releases published with npm
+> provenance. See the [release notes](https://github.com/RGB-Launchpad/wdk-wallet-rgb-browser/releases/tag/v0.2.1)
+> and the [changelog](CHANGELOG.md).
+
 **Note**: This package is currently in beta, as is the WDK itself. Please test thoroughly in
 development environments before using in production.
 
