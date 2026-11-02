@@ -100,6 +100,8 @@ because that request can be refused.
 | `invoiceMinutes` | `60` | How long an invoice stays valid. |
 | `fee` | per network | Bidding parameters: safety multiplier, floor and cap. |
 | `slots` | 3 × 20000 sats | How many empty colored UTXOs to keep, and how large. |
+| `vanillaKeychain` | `0` | The chain under m/86'/coin'/0' the wallet keeps its bitcoin on. Set it for a phrase another wallet already uses on m/86'/coin'/0'/0/0. |
+| `coloredKeychain` | the shared colored chain | The chain under m/86'/827166'/0' (827167' off Mainnet) the wallet keeps its RGB outputs on. Set it for a phrase another rgb-lib wallet already uses. Needs bindings that read it: `@utexo/rgb-lib-wasm` 1.0.0-beta.3 does not, and opening then fails. |
 
 There is deliberately no default proxy. A proxy relays consignments and therefore sees
 recipient identifiers, so which one to trust is your decision, not this package's.

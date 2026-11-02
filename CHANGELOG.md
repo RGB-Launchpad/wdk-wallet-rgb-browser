@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 - 2026-11-02
+
+Fixed:
+
+- An invoice is paid once. `transfer()` and `prepareTransfer()` refuse an invoice whose
+  recipient this wallet has already sent to, in a send that has not failed, before anything is
+  built or signed. An invoice takes one consignment: a second send to it was never accepted and
+  waited until it expired. Once the earlier send has failed, the invoice can be paid again.
+- `listTransfers()` without an asset includes unique tokens (UDA) and CFA assets on bindings
+  that take an asset id; it listed only NIA and IFA ones.
+- The declarations pass a consumer's strict TypeScript check with `@tetherto/wdk-wallet`
+  1.0.0-beta.22 and later: the account has `disposed`, which `IWalletAccount` requires from
+  beta.22 on, and the manager's `getAccount` overloads are in the base class's order. Checked
+  with beta.21, beta.22 and beta.25.
 
 Added:
 
@@ -10,6 +23,14 @@ Added:
   spending one destroys the assets on it. The wallet keeps its own snapshot. It needs bindings
   that read `coloredKeychain` in their wallet data; with bindings that do not, opening fails
   rather than falling back to the shared chain.
+
+- `disposed` on the account: true once `dispose()` has been called.
+
+Changed:
+
+- The peer dependency on `@tetherto/wdk-wallet` starts at 1.0.0-beta.21, the first version
+  whose `WalletManager` takes a signer type; the declarations extend `WalletManager<ISigner>`.
+- Releases are published from GitHub Actions, with npm provenance.
 
 ## 0.2.0 - 2026-10-16
 
