@@ -141,6 +141,11 @@ witness stack. The construction is in [`src/bip322.js`](src/bip322.js) and is pi
 specification's own vectors. `signMessage(message)` returns the address alongside the
 signature, which is what a verifier needs.
 
+The signature is made by a second wallet on the same key, opened with the wallet, which never
+goes online and is used for nothing else. A signature therefore does not wait for a sync or a
+send in progress. `hasMessageSigner()` says whether that is the case: when the second wallet
+does not open, or its address is not the wallet's own, the wallet signs in its queue instead.
+
 `verify` is not implemented. Checking a signature means Schnorr verification, which neither
 this module nor the bindings underneath it provide; use a Bitcoin library on the verifying
 side.

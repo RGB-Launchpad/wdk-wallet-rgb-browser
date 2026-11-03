@@ -295,6 +295,19 @@ export default class Engine {
     this._identityHrp = null
 
     /**
+     * @private When the identity key is the wallet's own: a second wallet on that key that only
+     * signs messages. It never goes online, so a signature never waits for a sync to end.
+     * Opened with the wallet and not waited for; null when it could not be used.
+     */
+    this._messageSigner = null
+
+    /** @private The message signer's opening, while it is under way or once it is done. */
+    this._messageSignerOpening = null
+
+    /** @private Calls on the identity wallet or the message signer, one at a time: each is one instance. */
+    this._signing = serialQueue()
+
+    /**
      * @private Counts the transactions this engine has signed. A send prepared and not yet
      * signed holds nothing: one signed in between may have spent its inputs.
      */
@@ -514,6 +527,11 @@ export default class Engine {
         ? walletData(`${this._config.dataDir}/identity-c0`, null, 'Mainnet')
         : walletData(`${this._config.dataDir}/identity`, null)))
       this._identityHrp = coinZero ? HRP[this._config.network] : null
+    } else {
+      // Read here, while nothing else uses the wallet: the signer is kept only on this address.
+      let address = null
+      try { address = await this._wallet.getAddress() } catch {}
+      if (address) this._messageSignerOpening = this._openMessageSigner(WasmWallet, walletData(`${this._config.dataDir}/signer`, null), address)
     }
 
     this._persisted = await this._requestPersistence()
@@ -521,6 +539,40 @@ export default class Engine {
     // A consumer that opens the wallet on its snapshot alone reaches the indexer later, with
     // `goOnline`, so the opening never waits on the network.
     if (!this._config.deferOnline) await this.goOnline()
+  }
+
+  /**
+   * Opens the message signer: a wallet on the identity key with a snapshot of its own, which
+   * it never writes. It is kept only when it answers the wallet's own address; a wallet whose
+   * snapshot pinned another address signs with the wallet, as does one whose signer failed to
+   * open. Never fails the wallet.
+   *
+   * @private
+   * @param {Function} WasmWallet - The bindings' wallet class.
+   * @param {string} data - The signer's wallet data.
+   * @param {string} address - The wallet's own address.
+   * @returns {Promise<Object | null>} The signer, or null when the wallet signs.
+   */
+  async _openMessageSigner (WasmWallet, data, address) {
+    const wallet = this._wallet
+    let signer = null
+
+    try {
+      signer = retryWhenBusy(await WasmWallet.create(data))
+      if (await signer.getAddress() !== address) throw new Error('The message signer has another address.')
+    } catch {
+      try { signer?.free?.() } catch {}
+      return null
+    }
+
+    // Closed while it opened: the signer goes with the wallet.
+    if (this._wallet !== wallet) {
+      try { signer.free?.() } catch {}
+      return null
+    }
+
+    this._messageSigner = signer
+    return signer
   }
 
   /**
@@ -1039,20 +1091,42 @@ export default class Engine {
    * transactions BIP-322 defines and the wallet signs that PSBT. The signature is the
    * resulting witness stack.
    *
+   * A wallet with a signer of its own ({@link hasMessageSigner}) signs on it, outside the
+   * queue: a signature does not wait for a sync or a send. Otherwise the wallet signs, in the
+   * queue like any other use of it.
+   *
    * @param {string} message - The message, signed verbatim.
    * @returns {Promise<{ address: string, signature: string }>} The address and the signature.
    */
   async signMessage (message) {
     if (typeof message !== 'string' || !message) throw new Error('A message is required.')
 
-    return this.run(async () => {
-      const signer = this._signer()
-      const address = await this._signerAddress()
+    const signer = await this._ownSigner()
+    const sign = async (wallet) => {
+      const address = await this._signerAddress(wallet)
       const psbt = await buildToSignPsbt(address, message)
-      const signed = await signer.signPsbt(psbt)
+      const signed = await wallet.signPsbt(psbt)
 
       return { address, signature: signatureFromWitness(extractWitness(signed)) }
+    }
+
+    if (!signer) return this.run(() => sign(this.wallet))
+
+    return this._signing(() => {
+      if (!this.isOpen) throw new Error('The wallet is not open.')
+      return sign(signer)
     })
+  }
+
+  /**
+   * Whether messages are signed on a wallet of their own, which no other command uses. Then
+   * {@link signMessage} does not wait for the queue, and a host that runs the commands one at
+   * a time (`queue`) need not hold the wallet for it either. Waits for the signer to open.
+   *
+   * @returns {Promise<boolean>} Whether {@link signMessage} signs apart from the wallet.
+   */
+  async hasMessageSigner () {
+    return !!(await this._ownSigner())
   }
 
   /**
@@ -1062,18 +1136,20 @@ export default class Engine {
    * @returns {Promise<string>} The address.
    */
   async identityAddress () {
-    return this.run(async () => await this._signerAddress())
+    if (this._identity) return this._signing(() => this._signerAddress(this._identity))
+    return this.run(async () => await this._signerAddress(this.wallet))
   }
 
-  /** @private The wallet that holds the identity key. */
-  _signer () {
-    return this._identity || this.wallet
+  /** @private The wallet that signs messages and nothing else, once open; null when the wallet signs them itself. */
+  async _ownSigner () {
+    if (this._identity) return this._identity
+    return this._messageSignerOpening ? await this._messageSignerOpening : null
   }
 
-  /** @private The identity address, written for the wallet's network. */
-  async _signerAddress () {
-    const address = await this._signer().getAddress()
-    return this._identityHrp ? withHrp(address, this._identityHrp) : address
+  /** @private The address `signer` signs as, written for the wallet's network. */
+  async _signerAddress (signer) {
+    const address = await signer.getAddress()
+    return signer === this._identity && this._identityHrp ? withHrp(address, this._identityHrp) : address
   }
 
   /**
@@ -1494,7 +1570,7 @@ export default class Engine {
 
   /** Closes the wallet and lets go of its snapshot. */
   dispose () {
-    for (const w of [this._wallet, this._identity]) {
+    for (const w of [this._wallet, this._identity, this._messageSigner]) {
       try {
         w?.free?.()
       } catch {
@@ -1504,6 +1580,8 @@ export default class Engine {
 
     this._wallet = null
     this._identity = null
+    this._messageSigner = null
+    this._messageSignerOpening = null
     this._online = null
     this._prepared.clear()
     this._release?.()

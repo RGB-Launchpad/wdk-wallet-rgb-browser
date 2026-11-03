@@ -81,7 +81,8 @@ describe('an RGB wallet in a browser', () => {
     expect(result.slots).toBe(0)
   })
 
-  test('signs a message with the wallet itself, which needs no chain', () => {
+  test('signs a message as the wallet\'s address, on a signer of its own, which needs no chain', () => {
+    expect(result.signsApart).toBe(true)
     expect(result.signedBy).toBe(result.address)
 
     // A BIP-322 simple signature for a taproot key-path spend: one witness item, a 64-byte

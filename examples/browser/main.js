@@ -45,7 +45,9 @@ export async function runRgbExample (config = {}) {
   const transfers = await account.listTransfers()
   const slots = await account.getFreeSlots()
 
-  // Signing needs the wallet, not the chain, so it works with no indexer.
+  // Signing needs the wallet, not the chain, so it works with no indexer. It is done on a
+  // second wallet on the same key, which nothing else uses, so it never waits for a sync.
+  const signsApart = await account.hasMessageSigner()
   const signed = await account.signMessage('Hello World')
 
   // Only meaningful against a reachable indexer; it reads the mempool and asks the indexer
@@ -86,6 +88,7 @@ export async function runRgbExample (config = {}) {
     assets: assets.length,
     transfers: transfers.length,
     slots,
+    signsApart,
     signedBy: signed.address,
     signature: signed.signature,
     failures
