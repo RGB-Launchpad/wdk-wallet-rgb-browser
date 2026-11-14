@@ -31,7 +31,7 @@
   "devDependencies": {
     "@tetherto/wdk": "1.0.0-beta.22",
     "@tetherto/wdk-wallet": "1.0.0-beta.25",
-    "@utexo/rgb-lib-wasm": "1.0.0-beta.3",
+    "@utexo/rgb-lib-wasm": "1.0.0-beta.4",
     "buffer": "6.0.3",
     "cross-env": "10.1.0",
     "esbuild": "0.28.2",
