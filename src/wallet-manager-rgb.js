@@ -99,11 +99,12 @@ export default class WalletManagerRgb extends WalletManager {
     const slots = { ...SLOTS, ...(config.slots || {}) }
     const fee = { ...feeFor(network), ...(config.fee || {}) }
 
-    // The configured cap is an upper bound on what is sensible to pay. What a slot can pay
-    // is a hard limit, and the two are set independently, so the lower of them wins. Without
-    // this a busy network produces a bid the wallet cannot fund, and rgb-lib reports it as
-    // insufficient allocations on a wallet that is plainly holding bitcoin.
-    fee.max = Math.min(fee.max, payableRate(slots))
+    // Default fee caps stay within what one slot can pay on engines that fund RGB fees from
+    // colored UTXOs alone. An explicit `config.fee.max` is respected as given (for example on
+    // bindings whose plain balance funds RGB fees alongside dust-sized slots).
+    if (config.fee?.max === undefined) {
+      fee.max = Math.min(fee.max, payableRate(slots))
+    }
 
     // Two chains can both call themselves Regtest, and rgb-lib cannot tell them apart: the
     // snapshot would be loaded for the wrong one and BDK would refuse to sync against it.

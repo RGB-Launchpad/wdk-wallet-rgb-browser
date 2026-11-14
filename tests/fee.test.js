@@ -2,7 +2,9 @@
 
 import { describe, expect, test } from '@jest/globals'
 
+import WalletManagerRgb from '../index.js'
 import { MAINNET_FEE, TEST_NETWORK_FEE, bid, clearingRate, feeFor } from '../src/fee.js'
+import { SLOTS, payableRate } from '../src/slots.js'
 
 describe('clearingRate', () => {
   test('is the rate at which one block fills', () => {
@@ -44,5 +46,24 @@ describe('feeFor', () => {
     expect(feeFor('Mainnet')).toBe(MAINNET_FEE)
     expect(feeFor('Signet')).toBe(TEST_NETWORK_FEE)
     expect(feeFor('Regtest')).toBe(TEST_NETWORK_FEE)
+  })
+})
+
+describe('WalletManagerRgb fee cap', () => {
+  const phrase = 'abandon '.repeat(11) + 'about'
+
+  test('clamps the default network cap to payableRate when fee.max is omitted', () => {
+    const m = new WalletManagerRgb(phrase, { network: 'Signet', deferOnline: true })
+    expect(m._cfg.fee.max).toBe(Math.min(TEST_NETWORK_FEE.max, payableRate(SLOTS)))
+  })
+
+  test('respects an explicit fee.max even when slots are dust-sized', () => {
+    const m = new WalletManagerRgb(phrase, {
+      network: 'Mainnet',
+      fee: { min: 2, max: 100, safety: 1.25, blockVsize: 1_000_000 },
+      slots: { utxoSizeSat: 330, sendVsize: 154 },
+      deferOnline: true
+    })
+    expect(m._cfg.fee.max).toBe(100)
   })
 })
