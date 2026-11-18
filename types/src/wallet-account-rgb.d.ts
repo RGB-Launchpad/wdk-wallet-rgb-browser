@@ -88,6 +88,13 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
      */
     confirmations(rows: Array<any>): Promise<Array<any>>;
     /**
+     * Sets and persists the outgoing consignment container format (`'v0'` or `'v1'`).
+     *
+     * @param {'v0' | 'v1'} version - The outgoing container format.
+     * @returns {Promise<'v0' | 'v1'>} The updated outgoing container format.
+     */
+    setConsignmentVersion(version: "v0" | "v1"): Promise<"v0" | "v1">;
+    /**
      * Sends plain Bitcoin. Spends the vanilla keychain only, never a UTXO carrying an asset.
      *
      * @param {Object} tx - The transaction.

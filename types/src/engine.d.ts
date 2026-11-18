@@ -37,6 +37,10 @@ export default class Engine {
     /** @private */
     private _onlineError;
     /** @private */
+    private _evmOnlineError;
+    /** @private */
+    private _consignmentVersion;
+    /** @private */
     private _persisted;
     /** @private */
     private _transferArgument;
@@ -164,6 +168,19 @@ export default class Engine {
     get esploraUrl(): any;
     goOnline(esploraUrl?: any): Promise<boolean>;
     _esploraUrl: any;
+    /**
+     * Reads the outgoing consignment container version (`'v0'` or `'v1'`).
+     *
+     * @returns {Promise<'v0' | 'v1'>} The active outgoing container version.
+     */
+    getConsignmentVersion(): Promise<"v0" | "v1">;
+    /**
+     * Sets and persists the outgoing consignment container version (`'v0'` or `'v1'`).
+     *
+     * @param {'v0' | 'v1'} version - The outgoing container version.
+     * @returns {Promise<'v0' | 'v1'>} The updated outgoing container version.
+     */
+    setConsignmentVersion(version: "v0" | "v1"): Promise<"v0" | "v1">;
     /**
      * The indexer handle, for the calls that need one.
      *
@@ -302,8 +319,9 @@ export default class Engine {
         minConfirmations?: number;
     }): Promise<any>;
     /**
-     * Whether the proxy already holds a consignment for this recipient id, which makes the id
-     * unusable: it keeps one per id and refuses to replace it.
+     * Whether a 0.2 proxy already holds a consignment for this recipient id, which makes the id
+     * unusable: 0.2 keeps one per recipient id and refuses to replace it, whereas 1.0 endpoints
+     * (`/v1/`) index operations by a fresh per-invoice `pk` and do not serve `recipient_id` lookups.
      *
      * @private
      * @param {string} recipientId - The recipient id.

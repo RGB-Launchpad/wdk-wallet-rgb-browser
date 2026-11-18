@@ -233,6 +233,57 @@ function randomId () {
 const isWitnessRecipient = (recipientId) => /(?:^|:)wvout:/.test(String(recipientId || ''))
 
 /**
+ * Whether an RGB proxy endpoint URL speaks the 1.0 JSON-RPC protocol (`/v1/`).
+ *
+ * @param {string} url - The proxy endpoint URL.
+ * @returns {boolean} True when the URL targets a 1.0 endpoint.
+ */
+const isV1ProxyUrl = (url) => /\/v1(?:\/|$|\?)/i.test(String(url || ''))
+
+/**
+ * Validates an optional RGB contract identifier (`rgb:...`) without checking local holdings,
+ * so a wallet with zero balance in a valid contract can still open an invoice for it.
+ *
+ * @param {string} [assetId] - The contract identifier, or omitted for any asset.
+ * @returns {string | undefined} The trimmed contract identifier, or undefined.
+ */
+function normalizeAssetId (assetId) {
+  if (assetId === undefined || assetId === null || assetId === '') return undefined
+  if (typeof assetId !== 'string' || !/^rgb:\S+$/.test(assetId.trim())) {
+    throw new Error('assetId must be a valid RGB contract id (rgb:...).')
+  }
+  return assetId.trim()
+}
+
+/**
+ * Extracts and validates the 32-byte x-only recipient public key (`pk`) on a 1.0 or dual-stack
+ * invoice. Any invoice carrying a `pk` field or query parameter that is not 64 hex characters is
+ * rejected immediately with `InvalidPubkey` instead of falling back to 0.2.
+ *
+ * @param {string} invoice - Raw invoice string.
+ * @param {Object} data - Parsed invoice data.
+ * @returns {string | null} Lower-case 64-character hex public key, or null for 0.2 invoices.
+ */
+function invoicePublicKey (invoice, data) {
+  const fromData = data?.publicKey ?? data?.public_key
+  let fromQuery
+  const qIndex = String(invoice || '').indexOf('?')
+  if (qIndex >= 0) {
+    const query = String(invoice).slice(qIndex + 1).split('#')[0]
+    const params = new URLSearchParams(query)
+    if (params.has('pk')) fromQuery = params.get('pk')
+  }
+  const candidate = fromData !== undefined && fromData !== null ? String(fromData) : fromQuery
+  if (candidate !== undefined && candidate !== null) {
+    if (!/^[0-9a-f]{64}$/i.test(candidate)) {
+      throw new Error('InvalidPubkey: invoice pk must be 64 hexadecimal characters.')
+    }
+    return candidate.toLowerCase()
+  }
+  return null
+}
+
+/**
  * What an invoice asks for: any amount, or a fixed one in base units. rgb-lib takes the amount
  * as a number, so one past 2^53 cannot be asked for exactly and is refused rather than rounded.
  *
@@ -278,6 +329,12 @@ export default class Engine {
 
     /** @private */
     this._onlineError = null
+
+    /** @private */
+    this._evmOnlineError = null
+
+    /** @private */
+    this._consignmentVersion = config.consignmentVersion || 'v0'
 
     /** @private */
     this._persisted = false
@@ -490,6 +547,7 @@ export default class Engine {
         vanillaKeychain,
         ...(coloredKeychain ? { coloredKeychain } : {}),
         supportedSchemas: network === this._config.network ? this._config.schemas : ['Nia'],
+        ...(network === this._config.network && this._config.allowRecklessSchemas ? { allowRecklessSchemas: true } : {}),
         // Pins the address index, so the wallet's address is stable across sessions.
         reuseAddresses: true
       })
@@ -512,6 +570,15 @@ export default class Engine {
         this._wallet = null
         throw new Error('These rgb-lib bindings do not read coloredKeychain; the wallet was not opened.')
       }
+    }
+
+    if (this._config.consignmentVersion && typeof this._wallet.setConsignmentVersion === 'function') {
+      await this._wallet.setConsignmentVersion(this._config.consignmentVersion)
+    } else if (typeof this._wallet.getConsignmentVersion === 'function') {
+      try {
+        const current = await this._wallet.getConsignmentVersion()
+        if (current === 'v0' || current === 'v1') this._consignmentVersion = current
+      } catch {}
     }
 
     await this._wallet.flush()
@@ -592,11 +659,28 @@ export default class Engine {
   async goOnline (esploraUrl = this._config.esploraUrl) {
     if (!this._wallet) throw new Error('The wallet is not open.')
 
+    const evmChains = this._config.evmChains && Object.keys(this._config.evmChains).length
+      ? this._config.evmChains
+      : null
+
     // Queued: the call holds the wallet until the indexer answers, and anything else that
     // holds the wallet meanwhile — a Lightning node attaching to it — would find it busy.
     return this.run(async () => {
       try {
-        this._online = await this._wallet.goOnline(true, esploraUrl)
+        if (evmChains) {
+          try {
+            this._online = await this._wallet.goOnline(true, esploraUrl, evmChains)
+            this._evmOnlineError = null
+          } catch (evmError) {
+            const msg = String(evmError?.message || evmError)
+            if (!/invalid evm rpc|evm rpc/i.test(msg)) throw evmError
+            this._evmOnlineError = msg
+            this._online = await this._wallet.goOnline(true, esploraUrl)
+          }
+        } else {
+          this._online = await this._wallet.goOnline(true, esploraUrl)
+          this._evmOnlineError = null
+        }
         this._onlineError = null
         this._esploraUrl = esploraUrl
       } catch (error) {
@@ -605,6 +689,45 @@ export default class Engine {
       }
 
       return !!this._online
+    })
+  }
+
+  /**
+   * Reads the outgoing consignment container version (`'v0'` or `'v1'`).
+   *
+   * @returns {Promise<'v0' | 'v1'>} The active outgoing container version.
+   */
+  async getConsignmentVersion () {
+    return this.run(async () => {
+      if (typeof this.wallet.getConsignmentVersion === 'function') {
+        const version = await this.wallet.getConsignmentVersion()
+        if (version === 'v0' || version === 'v1') {
+          this._consignmentVersion = version
+          return version
+        }
+      }
+      return this._consignmentVersion
+    })
+  }
+
+  /**
+   * Sets and persists the outgoing consignment container version (`'v0'` or `'v1'`).
+   *
+   * @param {'v0' | 'v1'} version - The outgoing container version.
+   * @returns {Promise<'v0' | 'v1'>} The updated outgoing container version.
+   */
+  async setConsignmentVersion (version) {
+    if (version !== 'v0' && version !== 'v1') {
+      throw new RangeError('consignmentVersion must be "v0" or "v1".')
+    }
+
+    return this.run(async () => {
+      if (typeof this.wallet.setConsignmentVersion === 'function') {
+        await this.wallet.setConsignmentVersion(version)
+      }
+      this._consignmentVersion = version
+      await this.wallet.flush()
+      return version
     })
   }
 
@@ -635,7 +758,7 @@ export default class Engine {
       const list = this.plain(await this.wallet.listAssets([]))
       const out = []
 
-      for (const asset of [...(list.nia || []), ...(list.ifa || [])]) {
+      for (const asset of [...(list.nia || []), ...(list.ifa || []), ...(list.bfa || [])]) {
         let precision = asset.precision ?? null
 
         try {
@@ -649,7 +772,9 @@ export default class Engine {
           ticker: asset.ticker,
           name: asset.name,
           precision,
-          balance: asset.balance
+          balance: asset.balance,
+          ...(asset.bridgeChainId !== undefined ? { bridgeChainId: asset.bridgeChainId } : {}),
+          ...(asset.bridgeContract !== undefined ? { bridgeContract: asset.bridgeContract } : {})
         })
       }
 
@@ -682,15 +807,30 @@ export default class Engine {
     return this.run(async () => {
       const assets = this.plain(await this.wallet.listAssets([])) || {}
       const transfers = []
-      for (const asset of [...(assets.nia || []), ...(assets.ifa || []), ...(assets.uda || []), ...(assets.cfa || [])]) {
+      const seen = new Set()
+      const keyOf = (t) => `${t.batchTransferIdx ?? t.batch_transfer_idx ?? ''}/${t.idx ?? ''}/${t.recipientId ?? t.recipient_id ?? ''}`
+      for (const asset of [...(assets.nia || []), ...(assets.ifa || []), ...(assets.uda || []), ...(assets.cfa || []), ...(assets.bfa || [])]) {
         for (const transfer of this.plain(await this._listTransfers(asset.assetId)) || []) {
+          seen.add(keyOf(transfer))
           transfers.push({ ...transfer, assetId: asset.assetId })
         }
       }
       // An invoice for any asset leaves a transfer with no asset until its consignment arrives;
       // it is pending all the same, and the screens list it with the rest.
       for (const transfer of this.plain(await this._listTransfersNoAsset()) || []) {
+        seen.add(keyOf(transfer))
         transfers.push({ ...transfer, assetId: null })
+      }
+      // A 0-balance invoice opened for a specific ContractId is neither in `listAssets([])` yet
+      // nor in `noAsset`: `listTransfers('any')` returns it with its `invoiceString` prefix.
+      if (this._transferArgument !== 'assetId') {
+        for (const transfer of this.plain(await this._listTransfers()) || []) {
+          if (seen.has(keyOf(transfer))) continue
+          seen.add(keyOf(transfer))
+          const rawInv = String(transfer.invoiceString ?? transfer.invoice_string ?? '')
+          const invMatch = /^(rgb:[^/\s?]+)\//.exec(rawInv)
+          transfers.push({ ...transfer, assetId: transfer.assetId ?? (invMatch ? invMatch[1] : null) })
+        }
       }
       const transactions = (this.plain(await this.wallet.listTransactions()) || []).map((tx) => ({
         ...tx,
@@ -881,6 +1021,7 @@ export default class Engine {
       throw new Error('No proxyUrl is configured. An invoice must name where the consignment goes.')
     }
 
+    const contractId = normalizeAssetId(assetId)
     const assignment = receiveAssignment(amount)
     const confirmations = confirmationsFor(this._config.minConfirmations, minConfirmations)
     const seconds = invoiceSeconds(minutes, this._config.invoiceMinutes)
@@ -895,7 +1036,7 @@ export default class Engine {
       try {
         // `undefined` means any asset; the bindings reject null.
         invoice = await this.wallet.blindReceive(
-          assetId || undefined,
+          contractId,
           assignment,
           seconds,
           this._proxyUrls(),
@@ -932,6 +1073,7 @@ export default class Engine {
       throw new Error('No proxyUrl is configured. An invoice must name where the consignment goes.')
     }
 
+    const contractId = normalizeAssetId(assetId)
     const assignment = receiveAssignment(amount)
     const confirmations = confirmationsFor(this._config.minConfirmations, minConfirmations)
     const seconds = invoiceSeconds(minutes, this._config.invoiceMinutes)
@@ -950,7 +1092,7 @@ export default class Engine {
         await this.wallet.rotateAddress(0)
 
         const invoice = this.plain(await this.wallet.witnessReceive(
-          assetId || undefined,
+          contractId,
           assignment,
           seconds,
           this._proxyUrls(),
@@ -969,20 +1111,21 @@ export default class Engine {
   }
 
   /**
-   * Whether the proxy already holds a consignment for this recipient id, which makes the id
-   * unusable: it keeps one per id and refuses to replace it.
+   * Whether a 0.2 proxy already holds a consignment for this recipient id, which makes the id
+   * unusable: 0.2 keeps one per recipient id and refuses to replace it, whereas 1.0 endpoints
+   * (`/v1/`) index operations by a fresh per-invoice `pk` and do not serve `recipient_id` lookups.
    *
    * @private
    * @param {string} recipientId - The recipient id.
    * @returns {Promise<boolean>} True when the id is taken.
    */
   async _proxyHolds (recipientId) {
-    // An id held by any proxy the invoice names is taken. Only the main proxy has to answer:
-    // a fallback that cannot be reached holds nothing a sender could have delivered there.
     const [main, ...fallbacks] = this._proxyUrls()
-    for (const url of fallbacks) {
+    const v02Fallbacks = fallbacks.filter((url) => !isV1ProxyUrl(url))
+    for (const url of v02Fallbacks) {
       if (await this._proxyHoldsAt(url, recipientId).catch(() => false)) return true
     }
+    if (!main || isV1ProxyUrl(main)) return false
     return this._proxyHoldsAt(main, recipientId)
   }
 
@@ -1389,7 +1532,9 @@ export default class Engine {
    */
   async _sendRequest ({ invoice, assetId, amount, feeRate, nonFungible = false }) {
     const online = this.needOnline()
-    const data = this.plain(new this._bindings.WasmInvoice(String(invoice || '').trim()).invoiceData())
+    const rawInvoice = String(invoice || '').trim()
+    const data = this.plain(new this._bindings.WasmInvoice(rawInvoice).invoiceData())
+    const publicKey = invoicePublicKey(rawInvoice, data)
 
     if (data.network && String(data.network).toLowerCase() !== String(this.network).toLowerCase()) {
       throw new Error(`The invoice is for ${data.network}, the wallet is on ${this.network}.`)
@@ -1413,7 +1558,7 @@ export default class Engine {
 
     const rate = this._givenRate(feeRate)
 
-    return { online, data, assetId: assetId || data.assetId, value, nonFungible, endpoints, rate }
+    return { online, data, publicKey, assetId: assetId || data.assetId, value, nonFungible, endpoints, rate }
   }
 
   /**
@@ -1440,7 +1585,7 @@ export default class Engine {
    *
    * @private
    */
-  async _sendBegin ({ online, data, assetId, value, nonFungible, endpoints, rate }) {
+  async _sendBegin ({ online, data, publicKey, assetId, value, nonFungible, endpoints, rate }) {
     await this.wallet.sync(online)
 
     // A witness recipient has no UTXO yet: the transfer creates the output the asset lands
@@ -1454,22 +1599,55 @@ export default class Engine {
     const witnessData = isWitnessRecipient(data.recipientId)
       ? { amountSat: String(this._config.witnessSats), blinding: null }
       : undefined
+    const expirationRaw = data.expirationTimestamp ?? data.expiration_timestamp
+    const expirationTimestamp = expirationRaw !== undefined && expirationRaw !== null && Number.isFinite(Number(expirationRaw))
+      ? Number(expirationRaw)
+      : null
+    const hasV1Endpoint = endpoints.some(isV1ProxyUrl)
+    const useV1 = Boolean(publicKey && hasV1Endpoint)
+    const senderEp = useV1
+      ? (this._config.senderProxyUrl || this._proxyUrls().find(isV1ProxyUrl) || null)
+      : null
 
     const recipient = (fungible) => ({
       [assetId]: [{
         recipientId: data.recipientId,
         witnessData,
         assignment: nonFungible ? 'NonFungible' : { Fungible: fungible },
-        transportEndpoints: endpoints
+        transportEndpoints: endpoints,
+        ...(publicKey ? { publicKey, encryption: data.encryption || 'Required' } : (data.encryption ? { encryption: data.encryption } : {})),
+        ...(expirationTimestamp !== null ? { expirationTimestamp } : {})
       }]
     })
+
+    const begin = async (fungible) => {
+      const raw = senderEp
+        ? await this.wallet.sendBegin(
+          online,
+          recipient(fungible),
+          false,
+          rate,
+          this._config.minConfirmations,
+          0,
+          senderEp,
+          null,
+          false
+        )
+        : await this.wallet.sendBegin(
+          online,
+          recipient(fungible),
+          false,
+          rate,
+          this._config.minConfirmations
+        )
+      return typeof raw === 'string' ? raw : String(raw?.psbt || '')
+    }
 
     let psbt
 
     try {
       try {
-        psbt = await this.wallet.sendBegin(
-          online, recipient(value), false, rate, this._config.minConfirmations)
+        psbt = await begin(value)
       } catch (error) {
         // Amounts pass as BigInt. Number loses precision past 2^53 and real supplies sit
         // above it, so the Number path is only taken when the value fits exactly.
@@ -1477,8 +1655,7 @@ export default class Engine {
           throw new Error(`The amount exceeds 2^53 and the bindings rejected BigInt: ${error?.message || error}`)
         }
 
-        psbt = await this.wallet.sendBegin(
-          online, recipient(Number(value)), false, rate, this._config.minConfirmations)
+        psbt = await begin(Number(value))
       }
     } catch (error) {
       throw new Error(explainSendError(error?.message || error, rate))
@@ -1671,7 +1848,7 @@ export default class Engine {
 
     const list = await this.wallet.listAssets([])
 
-    for (const asset of [...(list.nia || []), ...(list.ifa || []), ...(list.uda || []), ...(list.cfa || [])]) {
+    for (const asset of [...(list.nia || []), ...(list.ifa || []), ...(list.uda || []), ...(list.cfa || []), ...(list.bfa || [])]) {
       add(await this.wallet.listTransfers(asset.assetId))
     }
 

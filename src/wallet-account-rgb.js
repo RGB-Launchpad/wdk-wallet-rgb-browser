@@ -222,6 +222,21 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
     return this._readOnly.isBackupNeeded()
   }
 
+  /** @returns {Promise<'v0' | 'v1'>} The active outgoing consignment container format. */
+  async getConsignmentVersion () {
+    return this._readOnly.getConsignmentVersion()
+  }
+
+  /**
+   * Sets and persists the outgoing consignment container format (`'v0'` or `'v1'`).
+   *
+   * @param {'v0' | 'v1'} version - The outgoing container format.
+   * @returns {Promise<'v0' | 'v1'>} The updated outgoing container format.
+   */
+  async setConsignmentVersion (version) {
+    return this._engine.setConsignmentVersion(version)
+  }
+
   /**
    * Sends plain Bitcoin. Spends the vanilla keychain only, never a UTXO carrying an asset.
    *

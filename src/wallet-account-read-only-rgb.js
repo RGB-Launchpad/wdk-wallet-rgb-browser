@@ -193,6 +193,15 @@ export default class WalletAccountReadOnlyRgb extends WalletAccountReadOnly {
   }
 
   /**
+   * Reads the outgoing consignment container format (`'v0'` or `'v1'`).
+   *
+   * @returns {Promise<'v0' | 'v1'>} The active outgoing consignment version.
+   */
+  async getConsignmentVersion () {
+    return this._engine.getConsignmentVersion()
+  }
+
+  /**
    * Whether the wallet has changed since its last backup. The recovery phrase alone cannot
    * restore RGB assets: the consignments live only on this device.
    *
