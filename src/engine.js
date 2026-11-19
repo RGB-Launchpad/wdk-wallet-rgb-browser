@@ -1002,6 +1002,30 @@ export default class Engine {
   }
 
   /**
+   * The endpoints a new invoice names, by what it has to interoperate with.
+   *
+   * An invoice carrying `pk` is a `1.0` one, and a sender that knows only `0.2` (a `0.11.1`
+   * wallet, the default this wallet sends to) cannot pay it. So the default send format `v0`
+   * gets the `0.2` endpoints alone: the engine then issues an invoice with no `pk`. `v1` and
+   * every `BFA` asset get every endpoint; `BFA` exists only in `1.0`, so its invoice is the
+   * `1.0` one whatever the send format says.
+   *
+   * @private
+   * @param {Object} [options] - What the invoice is for.
+   * @param {boolean} [options.bfa] - Whether the asset is a bridged (`BFA`) one.
+   * @returns {string[]} The endpoints to offer the engine.
+   */
+  _receiveUrls ({ bfa = false } = {}) {
+    const all = this._proxyUrls()
+    if (bfa || this._consignmentVersion === 'v1') return all
+
+    const v02 = all.filter((url) => !isV1ProxyUrl(url))
+
+    // Nothing but a `1.0` endpoint configured: the invoice must name something.
+    return v02.length ? v02 : all
+  }
+
+  /**
    * Creates an invoice to receive an asset into a blinded UTXO.
    *
    * A proxy is required: the invoice has to name where the sender delivers the consignment,
@@ -1012,9 +1036,10 @@ export default class Engine {
    * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
    * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
    * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
+   * @param {boolean} [options.bfa] - Whether the asset is a bridged (`BFA`) one; such an invoice is `1.0`.
    * @returns {Promise<Object>} The invoice.
    */
-  async blindReceive ({ assetId, minutes, amount, minConfirmations } = {}) {
+  async blindReceive ({ assetId, minutes, amount, minConfirmations, bfa = false } = {}) {
     this.needOnline()
 
     if (!this._config.proxyUrl) {
@@ -1039,7 +1064,7 @@ export default class Engine {
           contractId,
           assignment,
           seconds,
-          this._proxyUrls(),
+          this._receiveUrls({ bfa }),
           confirmations
         )
       } catch (error) {
@@ -1064,9 +1089,10 @@ export default class Engine {
    * @param {number} [options.minutes] - How long the invoice stays valid: a whole number of minutes from 1 to 525,600 (a year).
    * @param {bigint | number | string} [options.amount] - A fixed amount in base units; any amount when omitted.
    * @param {number} [options.minConfirmations] - Confirmations the transfer must reach: a whole number from 0 to 255, never fewer than the configured value.
+   * @param {boolean} [options.bfa] - Whether the asset is a bridged (`BFA`) one; such an invoice is `1.0`.
    * @returns {Promise<Object>} The invoice.
    */
-  async witnessReceive ({ assetId, minutes, amount, minConfirmations } = {}) {
+  async witnessReceive ({ assetId, minutes, amount, minConfirmations, bfa = false } = {}) {
     this.needOnline()
 
     if (!this._config.proxyUrl) {
@@ -1095,7 +1121,7 @@ export default class Engine {
           contractId,
           assignment,
           seconds,
-          this._proxyUrls(),
+          this._receiveUrls({ bfa }),
           confirmations
         ))
 

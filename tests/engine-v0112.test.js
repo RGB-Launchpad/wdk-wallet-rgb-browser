@@ -65,7 +65,7 @@ describe('RGB 0.11.2 dual-stack engine and account upgrades', () => {
         flush: async () => {}
       }
 
-      const blind = await engine.blindReceive({ assetId: USDT_CONTRACT_ID })
+      const blind = await engine.blindReceive({ assetId: USDT_CONTRACT_ID, bfa: true })
       expect(blind.publicKey).toBe(VALID_PK)
       expect(blindCalls[0][0]).toBe(USDT_CONTRACT_ID)
       expect(blindCalls[0][3]).toEqual([
@@ -73,7 +73,7 @@ describe('RGB 0.11.2 dual-stack engine and account upgrades', () => {
         'rpcs://proxy.example.org/json-rpc'
       ])
 
-      const witness = await engine.witnessReceive({ assetId: USDT_CONTRACT_ID, amount: '5000000' })
+      const witness = await engine.witnessReceive({ assetId: USDT_CONTRACT_ID, amount: '5000000', bfa: true })
       expect(witness.publicKey).toBe(VALID_PK)
       expect(witnessCalls[0][0]).toBe(USDT_CONTRACT_ID)
       expect(witnessCalls[0][1]).toEqual({ Fungible: 5000000 })
