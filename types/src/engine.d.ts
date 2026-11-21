@@ -37,6 +37,10 @@ export default class Engine {
     /** @private */
     private _onlineError;
     /** @private */
+    private _evmOnlineError;
+    /** @private */
+    private _consignmentVersion;
+    /** @private */
     private _persisted;
     /** @private */
     private _transferArgument;
@@ -46,6 +50,16 @@ export default class Engine {
     private _identity;
     /** @private The network's address prefix, when the identity key is a Mainnet one. */
     private _identityHrp;
+    /**
+     * @private When the identity key is the wallet's own: a second wallet on that key that only
+     * signs messages. It never goes online, so a signature never waits for a sync to end.
+     * Opened with the wallet and not waited for; null when it could not be used.
+     */
+    private _messageSigner;
+    /** @private The message signer's opening, while it is under way or once it is done. */
+    private _messageSignerOpening;
+    /** @private Calls on the identity wallet or the message signer, one at a time: each is one instance. */
+    private _signing;
     /**
      * @private Counts the transactions this engine has signed. A send prepared and not yet
      * signed holds nothing: one signed in between may have spent its inputs.
@@ -129,6 +143,19 @@ export default class Engine {
      */
     private _openWallets;
     /**
+     * Opens the message signer: a wallet on the identity key with a snapshot of its own, which
+     * it never writes. It is kept only when it answers the wallet's own address; a wallet whose
+     * snapshot pinned another address signs with the wallet, as does one whose signer failed to
+     * open. Never fails the wallet.
+     *
+     * @private
+     * @param {Function} WasmWallet - The bindings' wallet class.
+     * @param {string} data - The signer's wallet data.
+     * @param {string} address - The wallet's own address.
+     * @returns {Promise<Object | null>} The signer, or null when the wallet signs.
+     */
+    private _openMessageSigner;
+    /**
      * Reaches the indexer, or tries again after a failure. Every online command needs this to
      * have succeeded once; a wallet opened with `deferOnline` calls it when it is ready to wait.
      * `esploraUrl` names another indexer than the configured one, for a consumer that falls
@@ -141,6 +168,19 @@ export default class Engine {
     get esploraUrl(): any;
     goOnline(esploraUrl?: any): Promise<boolean>;
     _esploraUrl: any;
+    /**
+     * Reads the outgoing consignment container version (`'v0'` or `'v1'`).
+     *
+     * @returns {Promise<'v0' | 'v1'>} The active outgoing container version.
+     */
+    getConsignmentVersion(): Promise<"v0" | "v1">;
+    /**
+     * Sets and persists the outgoing consignment container version (`'v0'` or `'v1'`).
+     *
+     * @param {'v0' | 'v1'} version - The outgoing container version.
+     * @returns {Promise<'v0' | 'v1'>} The updated outgoing container version.
+     */
+    setConsignmentVersion(version: "v0" | "v1"): Promise<"v0" | "v1">;
     /**
      * The indexer handle, for the calls that need one.
      *
@@ -279,8 +319,9 @@ export default class Engine {
         minConfirmations?: number;
     }): Promise<any>;
     /**
-     * Whether the proxy already holds a consignment for this recipient id, which makes the id
-     * unusable: it keeps one per id and refuses to replace it.
+     * Whether a 0.2 proxy already holds a consignment for this recipient id, which makes the id
+     * unusable: 0.2 keeps one per recipient id and refuses to replace it, whereas 1.0 endpoints
+     * (`/v1/`) index operations by a fresh per-invoice `pk` and do not serve `recipient_id` lookups.
      *
      * @private
      * @param {string} recipientId - The recipient id.
@@ -334,6 +375,10 @@ export default class Engine {
      * transactions BIP-322 defines and the wallet signs that PSBT. The signature is the
      * resulting witness stack.
      *
+     * A wallet with a signer of its own ({@link hasMessageSigner}) signs on it, outside the
+     * queue: a signature does not wait for a sync or a send. Otherwise the wallet signs, in the
+     * queue like any other use of it.
+     *
      * @param {string} message - The message, signed verbatim.
      * @returns {Promise<{ address: string, signature: string }>} The address and the signature.
      */
@@ -342,15 +387,23 @@ export default class Engine {
         signature: string;
     }>;
     /**
+     * Whether messages are signed on a wallet of their own, which no other command uses. Then
+     * {@link signMessage} does not wait for the queue, and a host that runs the commands one at
+     * a time (`queue`) need not hold the wallet for it either. Waits for the signer to open.
+     *
+     * @returns {Promise<boolean>} Whether {@link signMessage} signs apart from the wallet.
+     */
+    hasMessageSigner(): Promise<boolean>;
+    /**
      * The identity address, m/86'/coin'/0'/0/0: what {@link signMessage} signs as. It is the
      * wallet's own Bitcoin address unless the bitcoin is kept on another chain.
      *
      * @returns {Promise<string>} The address.
      */
     identityAddress(): Promise<string>;
-    /** @private The wallet that holds the identity key. */
-    private _signer;
-    /** @private The identity address, written for the wallet's network. */
+    /** @private The wallet that signs messages and nothing else, once open; null when the wallet signs them itself. */
+    private _ownSigner;
+    /** @private The address `signer` signs as, written for the wallet's network. */
     private _signerAddress;
     /**
      * Brings the wallet's view of the chain up to date, without touching RGB state.

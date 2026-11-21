@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+Changed:
+
+- Messages are signed on a wallet of their own: a second rgb-lib wallet on the identity key,
+  opened alongside the wallet and never online, which nothing else uses. `sign()` and
+  `signMessage()` no longer wait in the queue behind a sync or a send; a wallet whose bitcoin
+  is on another chain already signed on its identity wallet, which now signs outside the queue
+  too. The signer is kept only when it has the wallet's own address; otherwise, or when it does
+  not open, the wallet signs, in the queue, as before. It never writes a snapshot.
+
+Added:
+
+- `hasMessageSigner()` on the account: whether messages are signed apart from the wallet. A
+  host that runs the commands one at a time through `queue` can sign without holding the
+  wallet when it is true.
+
 ## 0.2.1 - 2026-11-02
 
 Security:

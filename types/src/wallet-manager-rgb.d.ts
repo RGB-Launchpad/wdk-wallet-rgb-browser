@@ -20,7 +20,11 @@
  * @property {number} [identityCoinType] - With `vanillaKeychain` set, 0 puts the identity address at m/86'/0'/0'/0/0 on every network, as wallets that use coin type 0 everywhere have it. Defaults to the network's coin type.
  * @property {(task: () => Promise<any>) => Promise<any>} [queue] - Runs each engine command. Defaults to the module's own queue, which runs them one at a time in arrival order. A host that already runs every use of the wallet one at a time passes its own, such as `(task) => task()`.
  * @property {boolean} [deferOnline] - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
- * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
+ * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa', 'Bfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
+ * @property {boolean} [allowRecklessSchemas] - Allow non-standard schemas on Mainnet (such as `Bfa`). Enabled automatically when `schemas` on Mainnet explicitly includes `'Bfa'` unless set to `false`.
+ * @property {Record<number | string, string | string[] | Object>} [evmChains] - Read-only EVM JSON-RPC endpoints keyed by EIP-155 chain id, passed to `goOnline` for bridged asset verification.
+ * @property {'v0' | 'v1'} [consignmentVersion] - Outgoing consignment container format (`'v0'` or `'v1'`). Defaults to `'v0'`.
+ * @property {string} [senderProxyUrl] - Optional 1.0 RGB proxy endpoint used as `senderTransportEndpoint` on outgoing 1.0 transfers; defaults to the first configured `/v1/` proxy endpoint when present.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
  * @property {import('./slots.js').SlotParameters} [slots] - Allocation slot parameters.
  */
@@ -151,9 +155,25 @@ export type RgbWalletConfig = {
      */
     deferOnline?: boolean;
     /**
-     * - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
+     * - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa', 'Bfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
      */
     schemas?: string[];
+    /**
+     * - Allow non-standard schemas on Mainnet (such as `Bfa`). Enabled automatically when `schemas` on Mainnet explicitly includes `'Bfa'` unless set to `false`.
+     */
+    allowRecklessSchemas?: boolean;
+    /**
+     * - Read-only EVM JSON-RPC endpoints keyed by EIP-155 chain id, passed to `goOnline` for bridged asset verification.
+     */
+    evmChains?: Record<number | string, string | string[] | any>;
+    /**
+     * - Outgoing consignment container format (`'v0'` or `'v1'`). Defaults to `'v0'`.
+     */
+    consignmentVersion?: "v0" | "v1";
+    /**
+     * - Optional 1.0 RGB proxy endpoint used as `senderTransportEndpoint` on outgoing 1.0 transfers; defaults to the first configured `/v1/` proxy endpoint when present.
+     */
+    senderProxyUrl?: string;
     /**
      * - Fee bidding parameters.
      */

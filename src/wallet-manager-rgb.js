@@ -57,7 +57,11 @@ const COIN_TYPE = { Mainnet: 0 }
  * @property {number} [identityCoinType] - With `vanillaKeychain` set, 0 puts the identity address at m/86'/0'/0'/0/0 on every network, as wallets that use coin type 0 everywhere have it. Defaults to the network's coin type.
  * @property {(task: () => Promise<any>) => Promise<any>} [queue] - Runs each engine command. Defaults to the module's own queue, which runs them one at a time in arrival order. A host that already runs every use of the wallet one at a time passes its own, such as `(task) => task()`.
  * @property {boolean} [deferOnline] - Open on the snapshot alone and reach the indexer later, with the account's `goOnline`. Defaults to false.
- * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
+ * @property {string[]} [schemas] - The asset schemas the wallet accepts, such as `['Nia', 'Uda', 'Cfa', 'Bfa']`. Defaults to `['Nia']` on Mainnet and `['Nia', 'Ifa']` elsewhere, which is what the published engine supports.
+ * @property {boolean} [allowRecklessSchemas] - Allow non-standard schemas on Mainnet (such as `Bfa`). Enabled automatically when `schemas` on Mainnet explicitly includes `'Bfa'` unless set to `false`.
+ * @property {Record<number | string, string | string[] | Object>} [evmChains] - Read-only EVM JSON-RPC endpoints keyed by EIP-155 chain id, passed to `goOnline` for bridged asset verification.
+ * @property {'v0' | 'v1'} [consignmentVersion] - Outgoing consignment container format (`'v0'` or `'v1'`). Defaults to `'v0'`.
+ * @property {string} [senderProxyUrl] - Optional 1.0 RGB proxy endpoint used as `senderTransportEndpoint` on outgoing 1.0 transfers; defaults to the first configured `/v1/` proxy endpoint when present.
  * @property {import('./fee.js').FeeParameters} [fee] - Fee bidding parameters.
  * @property {import('./slots.js').SlotParameters} [slots] - Allocation slot parameters.
  */
@@ -99,11 +103,12 @@ export default class WalletManagerRgb extends WalletManager {
     const slots = { ...SLOTS, ...(config.slots || {}) }
     const fee = { ...feeFor(network), ...(config.fee || {}) }
 
-    // The configured cap is an upper bound on what is sensible to pay. What a slot can pay
-    // is a hard limit, and the two are set independently, so the lower of them wins. Without
-    // this a busy network produces a bid the wallet cannot fund, and rgb-lib reports it as
-    // insufficient allocations on a wallet that is plainly holding bitcoin.
-    fee.max = Math.min(fee.max, payableRate(slots))
+    // Default fee caps stay within what one slot can pay on engines that fund RGB fees from
+    // colored UTXOs alone. An explicit `config.fee.max` is respected as given (for example on
+    // bindings whose plain balance funds RGB fees alongside dust-sized slots).
+    if (config.fee?.max === undefined) {
+      fee.max = Math.min(fee.max, payableRate(slots))
+    }
 
     // Two chains can both call themselves Regtest, and rgb-lib cannot tell them apart: the
     // snapshot would be loaded for the wrong one and BDK would refuse to sync against it.
@@ -128,6 +133,18 @@ export default class WalletManagerRgb extends WalletManager {
       throw new RangeError('coloredKeychain is an integer from 0 to 255.')
     }
 
+    const consignmentVersion = config.consignmentVersion ?? null
+    if (consignmentVersion !== null && consignmentVersion !== 'v0' && consignmentVersion !== 'v1') {
+      throw new RangeError('consignmentVersion must be "v0" or "v1".')
+    }
+
+    const schemas = config.schemas || (network === 'Mainnet' ? ['Nia'] : ['Nia', 'Ifa'])
+    const allowRecklessSchemas = config.allowRecklessSchemas ??
+      (network === 'Mainnet' && Array.isArray(schemas) && schemas.some((s) => String(s).toLowerCase() === 'bfa'))
+    const evmChains = config.evmChains && typeof config.evmChains === 'object' && !Array.isArray(config.evmChains)
+      ? { ...config.evmChains }
+      : null
+
     /** @private */
     this._cfg = {
       network,
@@ -135,13 +152,17 @@ export default class WalletManagerRgb extends WalletManager {
       esploraUrl,
       proxyUrl: config.proxyUrl || null,
       fallbackProxyUrls: Array.isArray(config.fallbackProxyUrls) ? config.fallbackProxyUrls : [],
+      senderProxyUrl: config.senderProxyUrl || null,
+      evmChains,
+      consignmentVersion,
       minConfirmations: config.minConfirmations ?? 1,
       invoiceMinutes: config.invoiceMinutes ?? 60,
       // rgb-lib's own seal size. The sender pays it, which is the trade a witness invoice
       // makes: the recipient needs no slot of their own.
       witnessSats: config.witnessSats ?? 1000,
       // rgb-lib refuses to open a mainnet wallet that lists IFA.
-      schemas: config.schemas || (network === 'Mainnet' ? ['Nia'] : ['Nia', 'Ifa']),
+      schemas,
+      allowRecklessSchemas: Boolean(allowRecklessSchemas),
       deferOnline: !!config.deferOnline,
       vanillaKeychain,
       coloredKeychain,

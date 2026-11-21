@@ -222,6 +222,21 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
     return this._readOnly.isBackupNeeded()
   }
 
+  /** @returns {Promise<'v0' | 'v1'>} The active outgoing consignment container format. */
+  async getConsignmentVersion () {
+    return this._readOnly.getConsignmentVersion()
+  }
+
+  /**
+   * Sets and persists the outgoing consignment container format (`'v0'` or `'v1'`).
+   *
+   * @param {'v0' | 'v1'} version - The outgoing container format.
+   * @returns {Promise<'v0' | 'v1'>} The updated outgoing container format.
+   */
+  async setConsignmentVersion (version) {
+    return this._engine.setConsignmentVersion(version)
+  }
+
   /**
    * Sends plain Bitcoin. Spends the vanilla keychain only, never a UTXO carrying an asset.
    *
@@ -390,6 +405,17 @@ export default class WalletAccountRgb extends WalletAccountReadOnlyRgb {
    */
   async signMessage (message) {
     return this._engine.signMessage(message)
+  }
+
+  /**
+   * Whether {@link sign} and {@link signMessage} sign on a wallet of their own, which no other
+   * command uses: a signature then does not wait for a sync or a send, and a host that runs the
+   * commands one at a time (`queue`) need not hold the wallet for one.
+   *
+   * @returns {Promise<boolean>} Whether messages are signed apart from the wallet.
+   */
+  async hasMessageSigner () {
+    return this._engine.hasMessageSigner()
   }
 
   /**
