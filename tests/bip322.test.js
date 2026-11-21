@@ -4,6 +4,7 @@ import { describe, expect, test } from '@jest/globals'
 
 import {
   BIP322_TAG,
+  b64,
   buildToSignPsbt,
   buildVirtualTxs,
   decodeAddress,
@@ -100,10 +101,40 @@ describe('to_sign', () => {
 })
 
 describe('the PSBT handed to the wallet', () => {
-  test('carries the magic and one input with a witness UTXO', async () => {
+  test('carries the magic and one input with both non_witness_utxo (to_spend) and witness_utxo', async () => {
     const psbt = await buildToSignPsbt(ADDR, 'Hello World')
+    const { toSpend, toSign, scriptPubKey } = await buildVirtualTxs(ADDR, 'Hello World')
 
     expect(psbt).toMatch(/^cHNidP8/)
+
+    // Parse PSBT v0 maps: global map, then input 0 map.
+    const bytes = b64.from(psbt)
+    let o = 5
+    const readVarint = () => {
+      const b = bytes[o++]
+      if (b < 0xfd) return b
+      if (b === 0xfd) { const v = bytes[o] | (bytes[o + 1] << 8); o += 2; return v }
+      throw new Error('unexpected varint')
+    }
+    const readMap = () => {
+      const map = new Map()
+      for (;;) {
+        const klen = readVarint()
+        if (klen === 0) return map
+        const key = bytes.slice(o, o + klen); o += klen
+        const vlen = readVarint()
+        const val = bytes.slice(o, o + vlen); o += vlen
+        map.set(hex.to(key), val)
+      }
+    }
+    const global = readMap()
+    const input0 = readMap()
+
+    expect(hex.to(global.get('00'))).toBe(hex.to(toSign))
+    expect(hex.to(input0.get('00'))).toBe(hex.to(toSpend))
+    expect(hex.to(input0.get('01'))).toBe(
+      '0000000000000000' + scriptPubKey.length.toString(16).padStart(2, '0') + hex.to(scriptPubKey)
+    )
   })
 
   test('says so when the wallet did not sign the input', async () => {

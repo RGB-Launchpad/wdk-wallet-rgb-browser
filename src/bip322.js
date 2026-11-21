@@ -275,7 +275,9 @@ export async function buildVirtualTxs (address, message) {
 const kv = (key, value) => cat(withLen(key), withLen(value))
 
 /**
- * Wraps `to_sign` in a PSBT v0 for the wallet to sign. `witness_utxo` alone is enough;
+ * Wraps `to_sign` in a PSBT v0 for the wallet to sign. Includes both `non_witness_utxo`
+ * (`to_spend`, field 0x00) and `witness_utxo` (field 0x01) so signers that verify prevouts
+ * on virtual transactions (such as `bdk_wallet` >= 3.2) accept and sign the input;
  * `extra` can carry taproot derivation fields (0x17 internal key, 0x16 tap bip32).
  *
  * @param {string} address - The address that signs.
@@ -284,10 +286,14 @@ const kv = (key, value) => cat(withLen(key), withLen(value))
  * @returns {Promise<string>} The PSBT, base64 encoded.
  */
 export async function buildToSignPsbt (address, message, extra = []) {
-  const { toSign, scriptPubKey } = await buildVirtualTxs(address, message)
+  const { toSpend, toSign, scriptPubKey } = await buildVirtualTxs(address, message)
   const global = cat(kv(new Uint8Array([0x00]), toSign))
   const witnessUtxo = cat(u64le(0n), withLen(scriptPubKey))
-  const input = cat(kv(new Uint8Array([0x01]), witnessUtxo), ...extra.map(([k, v]) => kv(k, v)))
+  const input = cat(
+    kv(new Uint8Array([0x00]), toSpend),
+    kv(new Uint8Array([0x01]), witnessUtxo),
+    ...extra.map(([k, v]) => kv(k, v))
+  )
 
   const psbt = cat(
     new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]), // magic "psbt" + 0xff
